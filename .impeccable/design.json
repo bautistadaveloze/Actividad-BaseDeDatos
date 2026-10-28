@@ -1,0 +1,8 @@
+{
+  "source": "public/styles.css",
+  "themes": { "default": ":root", "contrast": ":root[data-theme=\"contrast\"]", "light": "@media (prefers-color-scheme: light) :root:not([data-theme])" },
+  "shadows": { "pop": "0 12px 32px -8px rgb(0 0 0 / 0.6), 0 2px 6px rgb(0 0 0 / 0.4)", "pop-contrast": "0 0 0 2px #000, 0 10px 24px -6px rgb(0 0 0 / 0.35)" },
+  "motion": { "ease-out": "cubic-bezier(0.16, 1, 0.3, 1)", "centroid-move": "900ms exponential ease-out (canvas)", "message-arrival": "750ms exponential ease-out (canvas)" },
+  "focus": "2px solid var(--accent), offset 2px",
+  "icons": "lucide-static sprite served at /icons.svg"
+}

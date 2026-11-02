@@ -2,3 +2,8 @@ node_modules/
 .impeccable/review/
 .impeccable/config.local.json
 .impeccable/questions/
+
+# LaTeX
+specs/informe/*.aux
+specs/informe/*.log
+specs/informe/*.out

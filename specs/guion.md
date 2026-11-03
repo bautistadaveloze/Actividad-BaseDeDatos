@@ -19,9 +19,9 @@ Cada diapositiva tiene hasta cuatro partes:
 
 | Parte | Diapositivas | Tiempo |
 |---|---|---|
-| 01 · El problema | 1–7 | 6 min |
-| 02 · Procesamiento distribuido | 8–15 | 8 min |
-| 03 · Apache Spark | 16–30 | 12 min |
+| 01 · El problema | 1–8 | 7 min |
+| 02 · Procesamiento distribuido | 9–16 | 8 min |
+| 03 · Apache Spark | 17–30 | 11 min |
 | 04 · MLlib | 31–38 | 8 min |
 | 05 · Cierre y actividad | 39–43 | 3 min + 15 min de actividad |
 
@@ -110,7 +110,25 @@ El objetivo de esta parte es que el público sienta el problema antes de ver cua
 
 **Para entender vos:** en un datacenter real, los nodos son servidores sin pantalla montados en racks, unidos por switches. El dibujo con monitores es solo para que se entienda que cada nodo es una computadora completa.
 
-### 7 · Lo difícil de repartir el trabajo
+**Pasaje:** "Pero para que trabajen juntas, alguien tiene que organizarlas".
+
+### 7 · Tres roles dentro del clúster
+
+**Idea:** en un clúster no todas las computadoras hacen lo mismo. El driver coordina, el cluster manager administra las máquinas y los workers trabajan.
+
+**Cómo explicarlo:**
+- Una columna por clic:
+  - **Driver:** donde corre tu programa; arma el plan y reparte el trabajo.
+  - **Cluster manager:** sabe qué máquinas están libres y se las presta a cada programa. Nunca toca los datos.
+  - **Workers:** procesan los datos y pueden ser cientos.
+- Después la cocina: el jefe de cocina reparte los pedidos (driver), el encargado dice qué cocineros están libres (cluster manager) y los cocineros cocinan (workers). Esta analogía la podés retomar en las siguientes diapositivas.
+- Aclará que los nombres son los de Spark, pero la idea está en cualquier clúster: cuando veamos Hadoop, YARN va a ser su cluster manager.
+
+**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de driver y los celulares de executors.
+
+**Pasaje:** "Con un jefe, un encargado y cocineros, repartir el trabajo parece fácil. Pero no lo es".
+
+### 8 · Lo difícil de repartir el trabajo
 
 **Idea:** usar mil máquinas como si fueran una trae cuatro problemas: partir los datos, la red lenta, las máquinas que fallan y las máquinas lentas.
 
@@ -131,14 +149,14 @@ El objetivo de esta parte es que el público sienta el problema antes de ver cua
 
 El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), entender qué es machine learning, y llegar al límite que justifica Spark: el disco.
 
-### 8 · MapReduce y Hadoop
+### 9 · MapReduce y Hadoop
 
 **Idea:** Google inventó MapReduce en 2004 y Hadoop es la versión libre (2006). Hadoop tiene tres piezas: HDFS guarda, MapReduce procesa y YARN administra.
 
 **Cómo explicarlo:**
 - Contalo como historia. Google tenía el problema antes que nadie: indexar toda la web. Publicó cómo lo resolvía, pero no su código. Otros lo reimplementaron como software libre y así nació Hadoop.
 - Las tres piezas con un verbo cada una, que es lo que está en las tarjetas: **guarda, procesa, administra.**
-- Mencioná que YARN va a volver cuando hablemos de Spark.
+- YARN es el cluster manager de Hadoop: el encargado de la cocina de la diapositiva 7. Mencioná que va a volver cuando hablemos de Spark.
 
 **Para entender vos:**
 - **El paper:** "MapReduce: Simplified Data Processing on Large Clusters", de Jeffrey Dean y Sanjay Ghemawat (OSDI 2004).
@@ -146,7 +164,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 - **Origen de Hadoop:** lo empezaron Doug Cutting y Mike Cafarella y lo impulsó Yahoo. El nombre viene de un elefante de peluche del hijo de Cutting.
 - **YARN:** llegó con Hadoop 2 (versión estable en 2013). Antes, MapReduce también administraba las máquinas.
 
-### 9 · HDFS: archivos repartidos
+### 10 · HDFS: archivos repartidos
 
 **Idea:** HDFS parte cada archivo en bloques y guarda cada bloque en tres máquinas distintas. Si una se rompe, no se pierde nada.
 
@@ -163,7 +181,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 
 **Pregunta al público:** "Si se rompen dos máquinas a la vez, ¿se pierde algo?" Depende de cuáles. En el dibujo, si se rompen la 1 y la 2, B1 sigue en la 4.
 
-### 10 · Map, shuffle y reduce
+### 11 · Map, shuffle y reduce
 
 **Idea:** un programa MapReduce tiene tres fases. En map cada máquina procesa lo suyo, en shuffle se juntan los datos con la misma clave y en reduce se combinan. El programador escribe map y reduce; el shuffle lo hace el sistema.
 
@@ -176,7 +194,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 
 **Para entender vos:** *shuffle* en inglés quiere decir mezclar, como mezclar cartas. Lo que hace realmente el sistema es ordenar los pares por clave y mandarlos por la red a la máquina responsable de cada clave. Es la parte más costosa de casi cualquier trabajo distribuido, también en Spark.
 
-### 11 · Ejemplo: contar palabras
+### 12 · Ejemplo: contar palabras
 
 **Idea:** se aplican las tres fases a un caso concreto. Map y reduce trabajan en paralelo y solo el shuffle usa la red.
 
@@ -191,7 +209,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 
 **Pregunta al público:** "Si en vez de tres máquinas fueran mil, ¿qué fase tardaría más?" La respuesta es el shuffle, porque es la que mueve datos por la red.
 
-### 12 · Qué es machine learning
+### 13 · Qué es machine learning
 
 **Idea:** en lugar de escribir reglas a mano, el programa las aprende de ejemplos. Hay aprendizaje supervisado (los ejemplos traen la respuesta) y no supervisado (busca grupos solo).
 
@@ -210,7 +228,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 - **Tipos de supervisado:** se divide en **clasificación** (predecir una categoría) y **regresión** (predecir un número).
 - **Si preguntan por ChatGPT:** también es machine learning (aprendió de ejemplos de texto), pero de otra escala y otra familia (redes neuronales).
 
-### 13 · El machine learning repite pasadas
+### 14 · El machine learning repite pasadas
 
 **Idea:** entrenar no es leer los datos una vez: el algoritmo los recorre decenas o cientos de veces. Si cada pasada lee del disco, el costo se multiplica.
 
@@ -221,7 +239,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 
 **Para entender vos:** muchos algoritmos funcionan así. Por ejemplo, el descenso por gradiente (regresiones, redes neuronales) mide el error, corrige un poco los pesos en la dirección que lo reduce y repite. K-Means también itera, hasta que los centros dejan de moverse.
 
-### 14 · El límite: cada paso pasa por el disco
+### 15 · El límite: cada paso pasa por el disco
 
 **Idea:** en Hadoop, cada pasada es un job separado, y los jobs solo se pasan datos a través de HDFS, o sea, del disco. Con cien pasadas, se lee y escribe todo cien veces.
 
@@ -233,7 +251,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 
 **Pasaje:** "¿Y si en vez de ir al disco dejáramos los datos en memoria?"
 
-### 15 · Memoria contra disco
+### 16 · Memoria contra disco
 
 **Idea:** la memoria RAM es del orden de cien veces más rápida que el disco, pero es más chica y se borra al apagar. Spark aprovecha esa diferencia.
 
@@ -252,7 +270,7 @@ El objetivo es mostrar cómo se resolvió por primera vez (MapReduce y Hadoop), 
 
 El objetivo es que entiendan quién hace qué en un clúster de Spark, cómo se reparten los datos, cómo viaja el trabajo y cómo sobrevive a las fallas. Es la parte más larga: andá despacio en la arquitectura.
 
-### 16 · Qué es Spark
+### 17 · Qué es Spark
 
 **Idea:** Spark es un motor de procesamiento distribuido que mantiene los datos en memoria entre un paso y el siguiente.
 
@@ -266,19 +284,6 @@ El objetivo es que entiendan quién hace qué en un clúster de Spark, cómo se 
 - **Databricks:** sus creadores fundaron esta empresa, que es la que más lo desarrolla.
 - **Si preguntan si Spark reemplaza a Hadoop:** reemplaza a MapReduce, el motor. Muchas veces Spark corre usando HDFS para guardar y YARN para administrar las máquinas.
 
-### 17 · Tres roles dentro del clúster
-
-**Idea:** en un clúster de Spark no todas las computadoras hacen lo mismo. El driver coordina, el cluster manager administra las máquinas y los workers trabajan.
-
-**Cómo explicarlo:**
-- Una columna por clic:
-  - **Driver:** donde corre tu programa; arma el plan y reparte el trabajo.
-  - **Cluster manager:** sabe qué máquinas están libres y se las presta a Spark. Nunca toca los datos.
-  - **Workers:** procesan los datos y pueden ser cientos.
-- Después la cocina: el jefe de cocina reparte los pedidos (driver), el encargado dice qué cocineros están libres (cluster manager) y los cocineros cocinan (workers). Esta analogía la podés retomar en las siguientes diapositivas.
-
-**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de driver y los celulares de executors.
-
 ### 18 a 24 · La arquitectura, paso a paso
 
 Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra, así que **no apures los clics**: dejá que la animación termine antes de hablar. La idea general es que **se mueve el cálculo, no los datos.**
@@ -287,7 +292,7 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 
 **Idea:** el driver arma un plan y lo divide en tareas, que son pedacitos de trabajo que se pueden hacer en paralelo.
 
-**Cómo explicarlo:** los cuadraditos de colores son las tareas. "Es el jefe de cocina con la lista de pedidos, pero todavía no tiene cocineros". Si preguntan cómo arma el plan, decí que lo vemos en la diapositiva 27.
+**Cómo explicarlo:** arrancá recordando los tres roles de la diapositiva 7. Los cuadraditos de colores son las tareas. "Es el jefe de cocina con la lista de pedidos, pero todavía no tiene cocineros". Si preguntan cómo arma el plan, decí que lo vemos en la diapositiva 27.
 
 **Para entender vos:** "proceso" es un programa en ejecución. El driver puede correr en tu computadora o dentro del clúster.
 
@@ -331,7 +336,7 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 
 **Cómo explicarlo:**
 - Mirá cómo las particiones vuelan a cada worker: P1 y P2 al primero, P3 y P4 al segundo, P5 y P6 al tercero.
-- Esto responde al problema 2 de la diapositiva 7, la red lenta: en vez de traer los datos al programa, se lleva el programa a los datos.
+- Esto responde al problema 2 de la diapositiva 8, la red lenta: en vez de traer los datos al programa, se lleva el programa a los datos.
 
 **Para entender vos:**
 - **Qué pasa realmente:** la animación simplifica. Cada executor lee del almacenamiento (por ejemplo HDFS) los bloques que tiene en su misma máquina, y si se le pide, los guarda en memoria.
@@ -383,7 +388,7 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 **Idea:** cada acción dispara un job. Spark lo corta en stages donde hace falta un shuffle, y cada stage se divide en tasks, una por partición.
 
 **Cómo explicarlo:**
-- Conectá con MapReduce: el shuffle es el mismo de la diapositiva 10, el momento en que hay que mover datos entre máquinas.
+- Conectá con MapReduce: el shuffle es el mismo de la diapositiva 11, el momento en que hay que mover datos entre máquinas.
 - **Stage:** todo lo que se puede hacer sin mover datos, de corrido. **Task:** un stage aplicado a una partición, que es lo que el driver manda a cada executor.
 - Si el público está cansado, quedate solo con esto: Spark agrupa todo lo que no necesita red y corta donde sí la necesita.
 
@@ -397,7 +402,7 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 **Idea:** con miles de máquinas siempre hay alguna que se cae y alguna que anda lenta. Esta diapositiva plantea el problema; las dos siguientes son las soluciones.
 
 **Cómo explicarlo:**
-- Volvé a los problemas 3 y 4 de la diapositiva 7.
+- Volvé a los problemas 3 y 4 de la diapositiva 8.
 - **Nodo caído:** se pierden las particiones que tenía en memoria.
 - **Nodo lento**, o *straggler*: como un stage termina cuando termina su última tarea, una máquina lenta frena a todas. Analogía: un grupo de trabajo práctico entrega cuando termina el último integrante.
 
@@ -449,7 +454,7 @@ El objetivo es mostrar que todo lo anterior sirve para entrenar modelos, con un 
 **Idea:** MLlib trae algoritmos que ya saben trabajar con datos repartidos. No hay que programar la distribución.
 
 **Cómo explicarlo:**
-- Recorré las familias conectando con la diapositiva 12:
+- Recorré las familias conectando con la diapositiva 13:
   - **Clasificación y regresión** son supervisado (categoría o número).
   - **Clustering** es no supervisado.
   - **Recomendación:** el "otros también compraron".
@@ -615,7 +620,7 @@ En cada fase conectá lo que pasa en los celulares con una diapositiva:
 | Fase | Qué está pasando | Qué decir | Diapositiva |
 |---|---|---|---|
 | Unirse | Cada celular recibe 8 puntos | "Cada uno es un executor y esos 8 puntos son su partición" | 20–22 |
-| Map a mano | Cada uno asigna sus puntos al centro más cercano | "Esto es el map: cada uno solo con lo suyo, sin hablar con nadie" | 10, 34 |
+| Map a mano | Cada uno asigna sus puntos al centro más cercano | "Esto es el map: cada uno solo con lo suyo, sin hablar con nadie" | 11, 34 |
 | Reduce | El driver junta lo que mandaron | Mostrá cómo la opción B mueve mal los centros | 35–36 |
 | Modo Spark | Los celulares iteran solos | "Así funciona de verdad: los datos quedan en memoria y cada vuelta es solo cálculo"; si alguno anda lento, señalá la copia especulativa | 25, 30 |
 | Fallos | Se apagan nodos | "Se perdió su partición, y Spark la rehace en otro con la receta" | 29 |
@@ -666,27 +671,27 @@ Para repasar antes de presentar. El número indica dónde aparece por primera ve
 | Escalar horizontal | Usar muchas máquinas comunes | 5 |
 | Clúster | Grupo de computadoras conectadas que trabajan juntas | 6 |
 | Nodo | Cada computadora del clúster | 6 |
-| Straggler | Nodo que no falla pero anda lento y frena a todos | 7, 28 |
-| MapReduce | Modelo de Google: el programador escribe map y reduce, y el sistema hace el resto | 8 |
-| Hadoop | Versión libre de MapReduce, con HDFS y YARN | 8 |
-| HDFS | Sistema de archivos que reparte bloques en muchas máquinas, con 3 copias | 9 |
-| YARN | Administrador de máquinas de Hadoop; Spark lo puede usar | 8, 19 |
-| Map | Cada máquina procesa su pedazo y anota pares clave-valor | 10 |
-| Shuffle | Juntar por la red los pares con la misma clave | 10 |
-| Reduce | Combinar los valores de cada clave | 10 |
-| Par clave-valor | Un dato con etiqueta, como (gato, 1) | 10 |
-| Machine learning | Que el programa aprenda reglas a partir de ejemplos | 12 |
-| Modelo | Lo que aprendió el algoritmo, guardado como números | 12 |
-| Entrenar | Ajustar el modelo a los ejemplos | 12 |
-| Etiqueta | La respuesta correcta de un ejemplo (spam o no spam) | 12 |
-| Supervisado / no supervisado | Con etiquetas / sin etiquetas | 12 |
-| Iteración | Una pasada completa por los datos | 13 |
-| Job | En Hadoop, un map y un reduce completos; en Spark, lo que dispara una acción | 14, 27 |
-| RAM / memoria | Almacenamiento rápido que se borra al apagar | 15 |
-| Caché | Guardar algo en memoria para reusarlo | 15 |
-| Driver | El proceso que corre tu programa, arma el plan y reparte tareas | 17 |
-| Cluster manager | Presta máquinas a Spark (standalone, YARN, Kubernetes); en standalone se llama master | 17 |
-| Worker | Máquina que trabaja | 17 |
+| Driver | El proceso que corre tu programa, arma el plan y reparte tareas | 7 |
+| Cluster manager | Presta máquinas a cada programa (standalone, YARN, Kubernetes); en standalone se llama master | 7 |
+| Worker | Máquina que trabaja | 7 |
+| Straggler | Nodo que no falla pero anda lento y frena a todos | 8, 28 |
+| MapReduce | Modelo de Google: el programador escribe map y reduce, y el sistema hace el resto | 9 |
+| Hadoop | Versión libre de MapReduce, con HDFS y YARN | 9 |
+| HDFS | Sistema de archivos que reparte bloques en muchas máquinas, con 3 copias | 10 |
+| YARN | Administrador de máquinas de Hadoop; Spark lo puede usar | 9, 19 |
+| Map | Cada máquina procesa su pedazo y anota pares clave-valor | 11 |
+| Shuffle | Juntar por la red los pares con la misma clave | 11 |
+| Reduce | Combinar los valores de cada clave | 11 |
+| Par clave-valor | Un dato con etiqueta, como (gato, 1) | 11 |
+| Machine learning | Que el programa aprenda reglas a partir de ejemplos | 13 |
+| Modelo | Lo que aprendió el algoritmo, guardado como números | 13 |
+| Entrenar | Ajustar el modelo a los ejemplos | 13 |
+| Etiqueta | La respuesta correcta de un ejemplo (spam o no spam) | 13 |
+| Supervisado / no supervisado | Con etiquetas / sin etiquetas | 13 |
+| Iteración | Una pasada completa por los datos | 14 |
+| Job | En Hadoop, un map y un reduce completos; en Spark, lo que dispara una acción | 15, 27 |
+| RAM / memoria | Almacenamiento rápido que se borra al apagar | 16 |
+| Caché | Guardar algo en memoria para reusarlo | 16 |
 | Executor | Proceso de Spark en un worker que procesa particiones | 20 |
 | Tarea (task) | Un pedazo de trabajo sobre una partición | 18, 27 |
 | RDD | La colección repartida de Spark: particionada, inmutable y resiliente | 21 |

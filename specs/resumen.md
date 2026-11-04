@@ -29,23 +29,116 @@ El procesamiento distribuido es la segunda opción. Spark es una herramienta par
 
 ## 3. K-Means: el algoritmo que usamos de ejemplo
 
-**Qué hace:** agrupa datos parecidos. Nadie le dice cuáles son los grupos: los descubre solo. Es aprendizaje automático (*machine learning*) "no supervisado".
+### Qué problema resuelve
 
-**Ejemplo:** un súper quiere dividir a sus clientes en 3 grupos para hacerle una promo distinta a cada uno.
+Tenés muchos datos y querés **armar grupos de datos parecidos**, sin que nadie te diga de antemano cuáles son los grupos.
 
-**Analogía de los kioscos.** Hay que poner 3 kioscos en un barrio para que cada vecino tenga uno cerca:
+**Ejemplo:** un súper tiene miles de clientes. De cada uno sabe dos números: cuántas veces viene por mes y cuánto gasta. Si dibujás a cada cliente como un punto (x = visitas, y = gasto), se ven "nubes" de puntos:
 
-1. Ponés los 3 kioscos (los **centroides**) en cualquier lado.
-2. Cada vecino (cada **punto**) va al kiosco **más cercano**. → *paso de asignación*
-3. Cada kiosco se muda **al promedio** de la ubicación de sus vecinos. → *paso de actualización*
-4. Como los kioscos se movieron, algunos vecinos ahora tienen otro más cerca. Volvés al paso 2.
-5. Cuando los kioscos ya casi no se mueven, terminaste.
+```
+gasto
+  │                          ● ●
+  │                         ● ● ●      ← vienen poco, gastan mucho
+  │
+  │   ● ●
+  │  ● ● ●                             ← vienen poco, gastan poco
+  │                ● ● ●
+  │               ● ● ●                ← vienen seguido, gasto medio
+  └──────────────────────────────── visitas
+```
 
-- Cada vuelta del 2 al 4 es una **iteración**.
-- Para medir qué tan bien quedó, se suma la distancia al cuadrado de cada punto a su centroide. Ese número se llama **costo** o **WSSSE**. Más bajo es mejor.
-- **K** es la cantidad de grupos (en el juego, K = 3).
+K-Means encuentra esas nubes solo. Después el súper le hace una promo distinta a cada grupo.
 
-> **En el juego:** en la fase *Map a mano* hacés el paso 2 con tus 8 puntos. Las figuras de colores (círculo, cuadrado, triángulo) son los centroides.
+Como nadie le dice al algoritmo cuál es la respuesta correcta, es aprendizaje automático (*machine learning*) **no supervisado**.
+
+### El nombre ya dice cómo funciona
+
+- **K** = cuántos grupos querés. Lo elegís vos antes de empezar (en el juego, K = 3).
+- **Means** = "promedios" en inglés.
+
+O sea: **K-Means busca K promedios.** Cada grupo se representa con un punto, su **centroide** (o centro), que es el **promedio** de todos los puntos del grupo: el punto "del medio" de la nube.
+
+### Los pasos
+
+1. **Arrancar:** poné K centros en cualquier lado (por ejemplo, en K puntos elegidos al azar).
+2. **Asignar:** cada punto se une al centro **más cercano**. Así quedan armados K grupos.
+3. **Actualizar:** cada centro se mueve al **promedio** de los puntos de su grupo.
+4. **Repetir:** como los centros se movieron, algunos puntos ahora tienen otro centro más cerca. Volvé al paso 2.
+5. **Terminar:** cuando los centros ya no se mueven (o casi), listo.
+
+Cada vuelta de los pasos 2 y 3 es una **iteración**.
+
+**Analogía de los kioscos.** Hay que poner 3 kioscos en un barrio para que cada vecino tenga uno cerca. Los ponés en cualquier lado; cada vecino elige el más cercano; cada kiosco se muda al medio de sus clientes; algunos vecinos cambian de kiosco; los kioscos se vuelven a mudar... hasta que nadie cambia.
+
+### Ejemplo con números, a mano
+
+Para que sea fácil, usamos puntos en una sola línea (un solo número por punto) y **K = 2**. Los puntos son:
+
+```
+1   2   3                         10   11   12
+●───●───●─────────────────────────●────●────●
+```
+
+A simple vista hay dos grupos: {1, 2, 3} y {10, 11, 12}. Veamos si K-Means los encuentra arrancando **mal**, con los dos centros pegados: **A = 1** y **B = 2**.
+
+**Iteración 1**
+
+- *Asignar:* el 1 está sobre A. Todos los demás (2, 3, 10, 11, 12) están más cerca de B.
+  → Grupo A = {1}, Grupo B = {2, 3, 10, 11, 12}
+- *Actualizar:*
+  - A = 1 / 1 = **1**
+  - B = (2 + 3 + 10 + 11 + 12) / 5 = 38 / 5 = **7,6**
+
+B se fue para la derecha, al medio de un grupo que todavía está mal armado.
+
+**Iteración 2** (A = 1, B = 7,6)
+
+- *Asignar:*
+  - el 2 está a 1 de A y a 5,6 de B → va con A
+  - el 3 está a 2 de A y a 4,6 de B → va con A
+  - el 10, el 11 y el 12 están más cerca de B
+  → Grupo A = {1, 2, 3}, Grupo B = {10, 11, 12}
+- *Actualizar:*
+  - A = (1 + 2 + 3) / 3 = **2**
+  - B = (10 + 11 + 12) / 3 = **11**
+
+**Iteración 3** (A = 2, B = 11)
+
+- *Asignar:* los grupos quedan iguales que antes.
+- *Actualizar:* A sigue en 2 y B sigue en 11. **Los centros no se movieron: terminó.**
+
+```
+1   2   3                         10   11   12
+●───◆───●─────────────────────────●────◆────●
+    A                                  B
+```
+
+Aunque arrancó mal, en 3 vueltas encontró los dos grupos. Eso es todo K-Means: **asignar al más cercano, promediar, repetir.**
+
+### Cómo se mide si quedó bien
+
+Por cada punto se mide la distancia a su centro y se eleva al cuadrado. Se suma todo. Ese número es el **costo** (en MLlib se llama **WSSSE**). Más bajo es mejor: los puntos quedaron pegados a sus centros.
+
+En el ejemplo final: (1−2)² + (2−2)² + (3−2)² + (10−11)² + (11−11)² + (12−11)² = 1 + 0 + 1 + 1 + 0 + 1 = **4**.
+
+### Con datos reales
+
+- **Más números por punto:** cada cliente puede tener 2, 10 o 100 números (columnas). La idea es la misma; la distancia se calcula como la línea recta entre los dos puntos, solo que en más dimensiones.
+- **K lo elegís vos.** Una técnica común es probar varios K y ver cuándo agregar un grupo más deja de bajar mucho el costo (el "método del codo").
+- **El arranque importa.** Un mal arranque puede terminar en grupos peores. Por eso MLlib no arranca al azar puro: usa **k-means||**, que elige centros iniciales separados entre sí.
+
+### Por qué sirve para explicar Spark
+
+Mirá los dos pasos de cada iteración:
+
+| Paso | ¿Qué necesita? | ¿Se puede repartir? |
+|---|---|---|
+| **Asignar** | Cada punto solo necesita conocer los K centros | **Sí:** cada máquina asigna sus puntos sin hablar con nadie |
+| **Actualizar** | El promedio de **todos** los puntos de cada grupo, que están repartidos en muchas máquinas | Hay que **juntar** información de todas |
+
+El primer paso es un **map** y el segundo es un **reduce** (sección 5). Además se repite muchas veces sobre los mismos datos, que es justo lo que Spark hace bien (sección 6).
+
+> **En el juego:** en la fase *Map a mano* hacés el paso de asignar con tus 8 puntos. Las figuras de colores (círculo, cuadrado, triángulo) son los centros.
 
 ---
 
@@ -75,15 +168,88 @@ El procesamiento distribuido es la segunda opción. Spark es una herramienta par
 
 ---
 
-## 5. Map y Reduce: qué mandar
+## 5. MapReduce: map, shuffle y reduce
 
-Esta es **la idea más importante del juego**.
+### Para qué existe
 
-- **Map:** cada executor hace algo con *sus* datos, en paralelo con los demás. En K-Means: asignar cada punto a su centroide.
-- **Reduce:** se junta lo de todos para obtener un resultado único. En K-Means: calcular los nuevos centroides.
-- **Shuffle:** mover datos entre máquinas para poder juntarlos. Es lo **más caro**, porque usa la red.
+Querés procesar datos repartidos en muchas máquinas, pero **no querés programar** cómo se mandan datos por la red, quién hace qué, ni qué pasa si una máquina falla. MapReduce (Google, 2004) propone esto: **vos escribís solo dos funciones chiquitas, `map` y `reduce`, y el sistema hace el resto.**
 
-La pregunta clave es **qué manda cada executor al driver**:
+Todo funciona con **pares clave-valor**: un dato con una etiqueta. Por ejemplo `(gato, 1)`: la clave es "gato" y el valor es 1. La clave sirve para saber **qué cosas van juntas**.
+
+### Ejemplo: contar palabras
+
+Hay un texto enorme repartido en 3 máquinas, y queremos saber cuántas veces aparece cada palabra.
+
+```
+Máquina 1: "el gato come"
+Máquina 2: "el perro"
+Máquina 3: "el gato duerme"
+```
+
+**Paso 1, map** (cada máquina sola, con lo suyo, todas al mismo tiempo): por cada palabra anota el par `(palabra, 1)`.
+
+```
+Máquina 1: (el,1) (gato,1) (come,1)
+Máquina 2: (el,1) (perro,1)
+Máquina 3: (el,1) (gato,1) (duerme,1)
+```
+
+Fijate el problema: la palabra "el" aparece en **las tres** máquinas. Ninguna sabe por sí sola cuántos "el" hay en total.
+
+**Paso 2, shuffle** (mezclar y repartir): los pares viajan por la red para que **todos los que tienen la misma clave terminen en la misma máquina**. Hay una regla fija que dice a qué máquina va cada clave (por ejemplo: palabras de la a a la f a la máquina 1, de la g a la o a la 2, el resto a la 3).
+
+```
+Máquina 1 recibe:  come → [1]      duerme → [1]      el → [1, 1, 1]
+Máquina 2 recibe:  gato → [1, 1]
+Máquina 3 recibe:  perro → [1]
+```
+
+**Paso 3, reduce** (cada máquina sola otra vez): por cada clave, combina su lista de valores. Acá, sumarlos.
+
+```
+Máquina 1:  come 1    duerme 1    el 3
+Máquina 2:  gato 2
+Máquina 3:  perro 1
+```
+
+Listo: cada palabra con su total, y ninguna máquina tuvo que ver el texto entero.
+
+### Resumen de los tres pasos
+
+| Paso | Qué hace | ¿Usa la red? | Elección |
+|---|---|---|---|
+| **Map** | Cada máquina procesa **su** pedazo y anota pares clave-valor | No | Cada mesa cuenta sus votos |
+| **Shuffle** | Junta en una misma máquina los pares con la **misma clave** | **Sí, mucho** | Los resultados de cada mesa viajan al centro de cómputos de su provincia |
+| **Reduce** | Combina los valores de cada clave en un resultado | No | Cada centro suma los votos de su provincia |
+
+**Por qué el shuffle es lo más caro:** es el único paso en el que los datos viajan por la red, y viajan "de todos contra todos": cada máquina le manda algo a cada otra. Mover datos por la red es mucho más lento que leerlos de la memoria propia. Por eso, en cualquier sistema distribuido, **la regla de oro es mandar lo menos posible.**
+
+### El truco: resumir antes de mandar (combiner)
+
+Si la máquina 1 tuviera el texto "el el el el", el map anotaría `(el,1)` cuatro veces y mandaría cuatro pares por la red. Es más inteligente **sumar antes de mandar** y mandar un solo par: `(el,4)`. Eso es un **combiner**: un "mini reduce" que hace cada máquina con lo suyo antes del shuffle. El resultado final es el mismo y viaja mucho menos.
+
+Funciona porque **sumar se puede hacer por partes y en cualquier orden**: (1+1) + (1+1) da lo mismo que 1+1+1+1. Con promedios no pasa eso, y ahí está la trampa del juego.
+
+### Lo mismo, aplicado a K-Means
+
+Volvamos al ejemplo de la sección 3, en la iteración 2 (centros A = 1 y B = 7,6), pero ahora con los puntos repartidos en dos executors:
+
+```
+Executor 1: 1, 2, 10
+Executor 2: 3, 11, 12
+```
+
+- **Map** (cada executor con sus puntos): asigna cada punto a su centro más cercano y, como combiner, **resume** por centro: suma de los puntos y cantidad.
+  - Executor 1: A ← {1, 2} → `(A, suma 3, cantidad 2)`; B ← {10} → `(B, suma 10, cantidad 1)`
+  - Executor 2: A ← {3} → `(A, suma 3, cantidad 1)`; B ← {11, 12} → `(B, suma 23, cantidad 2)`
+- **Shuffle:** los resúmenes viajan agrupados por centro (la clave es A o B). Son poquísimos: K resúmenes por executor, no los puntos.
+- **Reduce:** por cada centro, suma las sumas, suma las cantidades y divide **una sola vez**.
+  - A = (3 + 3) / (2 + 1) = 6 / 3 = **2** ✅
+  - B = (10 + 23) / (1 + 2) = 33 / 3 = **11** ✅
+
+Da exactamente lo mismo que con todos los puntos juntos en una máquina (sección 3).
+
+### La pregunta del juego: ¿qué manda cada executor?
 
 | Opción | Qué manda | Tamaño | ¿Da bien? | Elección |
 |---|---|---|---|---|
@@ -93,24 +259,25 @@ La pregunta clave es **qué manda cada executor al driver**:
 
 ### Por qué B da mal (el "promedio de promedios")
 
-Mesa 1: **1 votante**. Mesa 2: **3 votantes**. No podés promediar sus porcentajes como si valieran lo mismo.
+Con el mismo ejemplo, si cada executor manda solo su promedio:
 
-Con números: el executor 1 tiene **un** punto en x = 10; el executor 2 tiene **tres** puntos en x = 0.
+- Executor 1: A = (1 + 2) / 2 = 1,5 y B = 10
+- Executor 2: A = 3 y B = (11 + 12) / 2 = 11,5
+- El driver promedia los promedios: A = (1,5 + 3) / 2 = **2,25** ❌ (debía ser 2) y B = (10 + 11,5) / 2 = **10,75** ❌ (debía ser 11)
 
-- Promedio real: (10 + 0 + 0 + 0) / 4 = **2,5** ✅
-- Promedio de los promedios: (10 + 0) / 2 = **5** ❌
+El error está en que el promedio de 1,5 venía de **dos** puntos y el 3 venía de **uno solo**, pero al promediarlos valen lo mismo. B **pierde cuántos puntos había detrás de cada promedio.**
 
-B pierde **cuántos puntos** había detrás de cada promedio.
+En la elección: una mesa tiene 10 votantes y otra 1.000. No podés promediar los porcentajes de las dos mesas como si valieran igual.
 
 ### Por qué C da bien
 
-Cada executor manda, por grupo, la suma de las coordenadas y la cantidad de puntos. El driver **suma todas las sumas, suma todas las cantidades, y divide una sola vez**:
+Sumas y cantidades sí se pueden juntar por partes y en cualquier orden, igual que los conteos de palabras. El driver hace:
 
 ```
-nuevo centroide = (suma1 + suma2 + ...) / (cantidad1 + cantidad2 + ...)
+nuevo centro = (suma1 + suma2 + ...) / (cantidad1 + cantidad2 + ...)
 ```
 
-Las sumas se pueden juntar en cualquier orden y el resultado es el mismo. A esto se le llama **combiner**, y los pares (suma, cantidad) se llaman **estadísticos suficientes**. Es exactamente lo que hace MLlib por dentro en cada iteración.
+A los pares (suma, cantidad) se los llama **estadísticos suficientes**: son lo mínimo que hace falta para calcular el promedio exacto. Es exactamente lo que hace MLlib por dentro en cada iteración.
 
 > **En el juego:** en la fase *Reduce*, los que mandaron B corren un centroide y el proyector muestra el error con un centroide "fantasma".
 
@@ -267,8 +434,9 @@ Detalles útiles:
 | **Task** | Procesar una partición |
 | **Stage** | Grupo de tareas que se ejecutan sin shuffle en el medio |
 | **Job** | Todo lo que dispara una acción |
-| **Shuffle** | Redistribuir datos entre máquinas por la red (caro) |
-| **Map / Reduce** | Procesar cada parte por separado / juntar los resultados |
+| **Shuffle** | Mover por la red los pares para que los de la misma clave queden juntos (caro) |
+| **Par clave-valor** | Un dato con etiqueta, como (gato, 1); la clave dice qué va junto |
+| **Map / Reduce** | Procesar cada parte por separado / combinar los valores de cada clave |
 | **Combiner** | Reducir parcialmente en cada nodo antes de mandar |
 | **RDD** | Colección distribuida, inmutable y recuperable |
 | **DataFrame** | Un RDD con forma de tabla |
@@ -283,8 +451,8 @@ Detalles útiles:
 | **HDFS** | Sistema de archivos distribuido de Hadoop |
 | **YARN** | Cluster manager de Hadoop |
 | **MLlib** | Biblioteca de machine learning de Spark |
-| **K-Means** | Algoritmo que agrupa datos en K grupos |
-| **Centroide** | El "centro" de un grupo |
+| **K-Means** | Agrupa datos en K grupos: asignar al centro más cercano, promediar, repetir |
+| **Centroide** | El centro de un grupo: el promedio de sus puntos |
 | **Iteración** | Una vuelta de asignar + actualizar |
 | **WSSSE / costo** | Suma de distancias² de cada punto a su centroide |
 

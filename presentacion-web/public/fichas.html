@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Carga de resultados · Grupo 8</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/cards.css">
+</head>
+<body>
+  <main class="cards-page">
+    <header class="cards-header">
+      <div>
+        <p class="eyebrow">Carga privada · no proyectar</p>
+        <h1>Resultados de las dos rondas</h1>
+        <p>Ingresen solo duración y cantidad de fichas mal clasificadas.</p>
+      </div>
+      <a class="btn btn-primary" href="/presentacion" target="_blank" rel="noopener">Volver a la presentación ↗</a>
+    </header>
+
+    <p class="experiment-note">
+      Se usan las mismas 200 fichas en ambas rondas. Para la ronda distribuida, registren el tiempo de cada mesa
+      desde la señal común; la presentación toma el tiempo de la última mesa y suma sus errores.
+    </p>
+
+    <section class="round-grid" aria-label="Carga de tiempos y errores">
+      <article class="round-card traditional-card">
+        <div class="round-heading">
+          <span class="round-number">01</span>
+          <div>
+            <p class="eyebrow">Un solo grupo · 7 personas</p>
+            <h2>Método tradicional</h2>
+          </div>
+        </div>
+        <p>Las 200 fichas quedan juntas en un mismo montón; el grupo las clasifica sin repartirlas entre mesas.</p>
+        <div class="round-fields">
+          <label class="count-field">Segundos
+            <input id="traditionalTime" type="number" min="0.1" step="0.1" inputmode="decimal" aria-label="Tiempo de la ronda tradicional en segundos">
+          </label>
+          <label class="count-field">Fichas mal clasificadas
+            <input id="traditionalErrors" type="number" min="0" max="200" step="1" inputmode="numeric" aria-label="Errores de clasificación de la ronda tradicional">
+          </label>
+        </div>
+        <p class="round-result" id="traditionalResult" role="status"></p>
+      </article>
+
+      <article class="round-card distributed-card">
+        <div class="round-heading">
+          <span class="round-number">02</span>
+          <div>
+            <p class="eyebrow">Cuatro mesas · 5 personas por mesa</p>
+            <h2>Trabajo distribuido</h2>
+          </div>
+        </div>
+        <p>Entreguen 50 fichas a cada mesa y registren el tiempo y los errores observados en cada una.</p>
+        <section class="partition-grid" id="partitions" aria-label="Tiempo y errores por mesa"></section>
+        <p class="round-result" id="distributedResult" role="status"></p>
+      </article>
+    </section>
+
+    <section class="comparison-card" aria-live="polite">
+      <div class="comparison-heading">
+        <div>
+          <p class="eyebrow">Vista previa · se refleja en la diapositiva 2</p>
+          <h2>Tiempo y errores</h2>
+        </div>
+        <button class="btn btn-ghost" id="reset" type="button">Borrar datos</button>
+      </div>
+      <div class="comparison-stats">
+        <article><span>Tiempo tradicional</span><strong id="baselineTime">—</strong><small id="traditionalErrorsSummary">—</small></article>
+        <article><span>Tiempo distribuido</span><strong id="distributedTime">—</strong><small id="distributedErrorsSummary">—</small></article>
+        <article><span>Diferencia de tiempo</span><strong id="timeDifference">—</strong></article>
+        <article><span>Errores sumados</span><strong id="accuracy">—</strong></article>
+      </div>
+      <div class="time-chart" role="img" aria-label="Comparación de los tiempos observados">
+        <div class="time-row">
+          <span>Tradicional</span>
+          <div class="time-track"><span id="traditionalBar"></span></div>
+          <strong id="traditionalBarLabel">—</strong>
+        </div>
+        <div class="time-row">
+          <span>Distribuido</span>
+          <div class="time-track"><span id="distributedBar"></span></div>
+          <strong id="distributedBarLabel">—</strong>
+        </div>
+      </div>
+      <p class="comparison-caveat">
+        El tiempo distribuido es el de la última mesa en terminar. La comparación muestra esta actividad del aula,
+        no mide la velocidad real de Apache Spark.
+      </p>
+    </section>
+  </main>
+  <script src="/cards.js"></script>
+</body>
+</html>

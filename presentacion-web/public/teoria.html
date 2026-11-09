@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apache Spark · conceptos clave</title>
+  <link rel="preload" href="/fonts/sans/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/theory.css">
+  <script>
+    try { const t = localStorage.getItem('driver-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+    if (new URLSearchParams(location.search).has('embed')) document.documentElement.dataset.embed = 'true';
+  </script>
+</head>
+<body>
+  <main class="theory">
+    <header class="theory-top">
+      <a class="theory-brand" href="/fichas">Grupo 8 <span>· Apache Spark + MLlib</span></a>
+      <nav aria-label="Presentación">
+        <a href="/fichas">Tarjetas</a>
+        <a href="/driver">Actividad web</a>
+      </nav>
+    </header>
+
+    <section class="slide active" data-slide="0" aria-labelledby="slide-title-0">
+      <div class="slide-copy">
+        <p class="eyebrow">01 · Arquitectura</p>
+        <h1 id="slide-title-0">Un programa, varias máquinas</h1>
+        <p class="slide-lead">Spark divide un trabajo grande en tareas y las coordina sobre un clúster.</p>
+        <p class="type-note"><strong>Qué es:</strong> un motor de procesamiento distribuido, no una base transaccional.</p>
+        <ul class="concept-list">
+          <li><strong>Driver:</strong> planifica el trabajo y reúne los resultados.</li>
+          <li><strong>Cluster manager:</strong> asigna recursos para la aplicación.</li>
+          <li><strong>Worker:</strong> máquina que aporta recursos de cómputo.</li>
+          <li><strong>Executor:</strong> proceso que ejecuta tareas y puede guardar datos en memoria.</li>
+        </ul>
+        <p class="analogy">En la actividad: proyector = driver; celulares = executors simulados. No son máquinas Spark reales.</p>
+      </div>
+      <div class="architecture" role="img" aria-label="El driver envía tareas a executors alojados en workers; cada executor procesa particiones y devuelve resultados">
+        <div class="driver-node">
+          <span class="node-label">Coordina</span>
+          <strong>Driver</strong>
+          <small>planifica y combina</small>
+        </div>
+        <div class="task-arrow" aria-hidden="true"><span>Tareas ↓</span></div>
+        <div class="worker-row">
+          <article class="worker-node">
+            <span class="node-label">Worker 1</span>
+            <strong>Executor</strong>
+            <span class="partition-tags"><i>P1</i><i>P2</i></span>
+            <small>procesa particiones</small>
+          </article>
+          <article class="worker-node">
+            <span class="node-label">Worker 2</span>
+            <strong>Executor</strong>
+            <span class="partition-tags"><i>P3</i><i>P4</i></span>
+            <small>procesa particiones</small>
+          </article>
+        </div>
+        <div class="result-arrow" aria-hidden="true">↑ Resultados al driver</div>
+      </div>
+    </section>
+
+    <section class="slide" data-slide="1" aria-labelledby="slide-title-1" hidden>
+      <div class="slide-copy">
+        <p class="eyebrow">02 · Cómo ejecuta</p>
+        <h1 id="slide-title-1">Primero planifica; después calcula</h1>
+        <p class="slide-lead">Las transformaciones describen los pasos. Una acción necesita el resultado y dispara la ejecución.</p>
+        <div class="execution-flow">
+          <article><span>Entrada</span><strong>Datos</strong><small>particiones</small></article>
+          <b aria-hidden="true">→</b>
+          <article><span>Transformación</span><strong>filter()</strong><small>define el plan</small></article>
+          <b aria-hidden="true">→</b>
+          <article class="action-node"><span>Acción</span><strong>count()</strong><small>ejecuta el plan</small></article>
+        </div>
+        <div class="concept-pair">
+          <p><strong>Lazy evaluation:</strong> las transformaciones esperan; Spark arma el plan (DAG).</p>
+          <p><strong>Cache:</strong> conserva datos en memoria si deben reutilizarse.</p>
+          <p><strong>Linaje:</strong> permite recalcular una partición perdida desde su origen.</p>
+        </div>
+      </div>
+      <div class="dag-card" role="img" aria-label="Grafo de ejecución: fuente de datos, filtro y conteo">
+        <p class="dag-caption">Plan de ejecución (DAG)</p>
+        <div class="dag-source">Datos<br><small>P1 · P2 · P3 · P4</small></div>
+        <span class="dag-arrow">↓</span>
+        <div class="dag-transform">filter(par)</div>
+        <span class="dag-arrow">↓</span>
+        <div class="dag-action">count() · empieza el cálculo</div>
+      </div>
+    </section>
+
+    <section class="slide" data-slide="2" aria-labelledby="slide-title-2" hidden>
+      <div class="slide-copy">
+        <p class="eyebrow">03 · Machine learning</p>
+        <h1 id="slide-title-2">MLlib + K-Means</h1>
+        <p class="slide-lead">MLlib ofrece algoritmos de aprendizaje automático que Spark puede ejecutar sobre datos distribuidos.</p>
+        <ol class="steps-list">
+          <li><b>Asignar:</b> cada executor acerca sus puntos al centroide más próximo.</li>
+          <li><b>Resumir:</b> cada partición calcula sumas y cantidad por grupo.</li>
+          <li><b>Reducir:</b> el driver combina resúmenes y mueve los centroides al promedio.</li>
+          <li><b>Repetir:</b> comienza otra iteración hasta que los centros dejan de cambiar.</li>
+        </ol>
+        <p class="analogy">La actividad web deja ver una iteración y comparar qué datos se envían al driver.</p>
+      </div>
+      <div class="kmeans-flow" role="img" aria-label="Puntos agrupados alrededor de tres centroides; cada grupo produce sumas y cantidades que se combinan">
+        <div class="cluster-map">
+          <span class="cluster-point p1"></span><span class="cluster-point p2"></span><span class="cluster-point p3"></span>
+          <span class="cluster-point p4"></span><span class="cluster-point p5"></span><span class="cluster-point p6"></span>
+          <span class="cluster-point p7"></span><span class="cluster-point p8"></span><span class="cluster-point p9"></span>
+          <span class="centroid c0">●</span><span class="centroid c1">●</span><span class="centroid c2">●</span>
+        </div>
+        <div class="summary-packets">
+          <span>Σx · Σy · n</span><span>Σx · Σy · n</span><span>Σx · Σy · n</span>
+        </div>
+        <div class="reduce-node">Driver · combina → nuevos centroides</div>
+      </div>
+    </section>
+
+    <section class="slide" data-slide="3" aria-labelledby="slide-title-3" hidden>
+      <div class="slide-copy">
+        <p class="eyebrow">04 · Cuándo conviene</p>
+        <h1 id="slide-title-3">Spark y una base relacional se complementan</h1>
+        <p class="slide-lead">No son reemplazos directos: cada tecnología encaja mejor con una carga de trabajo distinta.</p>
+        <div class="compare-grid">
+          <article>
+            <span class="compare-tag">Apache Spark</span>
+            <h2>Analizar mucho junto</h2>
+            <ul><li>Transformar millones de eventos</li><li>Calcular agregados por lotes</li><li>Preparar datos o entrenar modelos</li></ul>
+          </article>
+          <article>
+            <span class="compare-tag relational">Base relacional</span>
+            <h2>Registrar y consultar operaciones</h2>
+            <ul><li>Leer o actualizar filas puntuales</li><li>Mantener transacciones</li><li>Aplicar restricciones de integridad</li></ul>
+          </article>
+        </div>
+        <p class="analogy">Ejemplo: la base registra ventas; Spark analiza millones de ventas y segmenta clientes.</p>
+      </div>
+      <div class="complement-flow" role="img" aria-label="La base relacional registra ventas y luego Spark analiza el conjunto y entrena un modelo">
+        <div class="system-card relational-card"><strong>Base relacional</strong><span>ventas · transacciones</span></div>
+        <span class="flow-arrow">Datos →</span>
+        <div class="system-card spark-card"><strong>Apache Spark</strong><span>análisis · MLlib</span></div>
+        <span class="flow-arrow">→</span>
+        <div class="system-card output-card"><strong>Resultado</strong><span>agregados · grupos</span></div>
+      </div>
+    </section>
+
+    <footer class="slide-controls">
+      <span class="slide-count" id="slideCount" aria-live="polite">1 / 4</span>
+      <div class="progress-dots" id="progressDots" aria-hidden="true"></div>
+      <div class="control-buttons">
+        <button id="previous" class="btn btn-ghost" type="button" disabled>← Anterior</button>
+        <button id="next" class="btn btn-primary" type="button">Siguiente →</button>
+      </div>
+    </footer>
+    <p class="keyboard-hint">También podés avanzar con ← → o la barra espaciadora</p>
+  </main>
+  <script src="/theory.js"></script>
+</body>
+</html>

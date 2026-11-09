@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+  <title>Clúster · Executor</title>
+  <link rel="preload" href="/fonts/sans/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/worker.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="bar-id">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="6" cy="7" r="3.2" fill="var(--c0)"/>
+        <rect x="14.8" y="4" width="6.2" height="6.2" rx="0.8" fill="var(--c1)"/>
+        <path d="M12 13.2 16 20H8z" fill="var(--c2)"/>
+      </svg>
+      <span id="barTitle">Clúster</span>
+    </div>
+    <div class="bar-conn" id="conn" aria-live="polite"><span class="dot"></span><span>Conectando</span></div>
+  </header>
+
+  <div class="banners" id="banners" aria-live="polite"></div>
+
+  <main class="screen" id="screen"></main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/worker.js"></script>
+</body>
+</html>

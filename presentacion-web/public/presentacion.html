@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grupo 8 · Apache Spark y MLlib</title>
+  <link rel="preload" href="/fonts/sans/atkinson-hyperlegible-next-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/presentacion.css">
+  <script>
+    try { const t = localStorage.getItem('driver-theme'); if (t) document.documentElement.dataset.theme = t; } catch {}
+  </script>
+</head>
+<body>
+  <main class="deck">
+    <header class="deck-top">
+      <a class="deck-brand" href="/presentacion">GRUPO 8 <span>· APACHE SPARK + MLLIB</span></a>
+      <div class="deck-top-actions">
+        <span class="deck-section" id="sectionLabel">Apertura práctica</span>
+        <a class="btn btn-ghost" href="/fichas" target="_blank" rel="noopener">Cargar resultados</a>
+        <button class="btn btn-ghost btn-icon" id="fullScreen" type="button" aria-label="Pantalla completa" title="Pantalla completa (F)">⛶</button>
+      </div>
+    </header>
+
+    <div class="deck-body">
+      <section class="deck-slide is-active" data-title="Apertura práctica" aria-labelledby="slide-1-title">
+        <div class="opening-layout">
+          <div class="opening-copy">
+            <p class="eyebrow">0–5 min · Empezamos haciendo</p>
+            <h1 id="slide-1-title">Una tarea.<br>Dos formas de organizarla.</h1>
+            <p class="slide-lead">Clasifiquemos las mismas 200 fichas en pares e impares de dos maneras distintas.</p>
+            <div class="opening-callout"><strong>La pregunta</strong><span>¿Qué cambia cuando el trabajo se divide y se hace al mismo tiempo?</span></div>
+          </div>
+          <div class="rounds">
+            <article class="round-step">
+              <span class="round-index">01</span>
+              <div><p class="eyebrow">Una mesa · método tradicional</p><h2>Un solo montón</h2><p>Siete personas trabajan sobre las 200 fichas juntas, sin dividirlas en lotes por mesa. El montón compartido puede generar cruces y esperas.</p></div>
+              <strong class="round-arrow" aria-hidden="true">↓</strong>
+            </article>
+            <article class="round-step distributed-step">
+              <span class="round-index">02</span>
+              <div><p class="eyebrow">Cuatro mesas · trabajo distribuido</p><h2>Cuatro lotes de 50</h2><p>Cada mesa recibe su parte, clasifica en paralelo y reporta errores. El tiempo total lo marca la última mesa.</p></div>
+            </article>
+            <p class="slide-footnote">La comparación ilustra una forma de organizar el trabajo; no es un benchmark de Apache Spark.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="deck-slide" data-title="Resultados de la actividad" aria-labelledby="slide-2-title" hidden>
+        <div class="results-heading">
+          <div><p class="eyebrow">Después de la práctica · datos del aula</p><h1 id="slide-2-title">¿Qué ocurrió en cada ronda?</h1></div>
+        </div>
+        <div class="result-stats">
+          <article><span>Tradicional · un montón compartido</span><strong id="deckTraditionalTime">—</strong><small id="deckTraditionalErrors">—</small></article>
+          <article><span>Distribuido · cuatro lotes de 50</span><strong id="deckDistributedTime">—</strong><small id="deckDistributedErrors">—</small></article>
+          <article class="result-highlight"><span>Diferencia de tiempo observada</span><strong id="deckDifference">—</strong><small id="deckTotalErrors">—</small></article>
+        </div>
+        <div class="result-bars" aria-label="Comparación visual de tiempos">
+          <div class="result-bar-row"><span>Una mesa</span><div class="result-track"><i id="deckTraditionalBar"></i></div><b id="deckTraditionalLabel">—</b></div>
+          <div class="result-bar-row"><span>Cuatro mesas</span><div class="result-track"><i id="deckDistributedBar"></i></div><b id="deckDistributedLabel">—</b></div>
+        </div>
+        <div class="result-methods"><article><h2>Un único montón</h2><p>Sin dividir el trabajo por mesas, varias personas se cruzan y esperan para tomar y clasificar fichas.</p></article><article><h2>Cuatro particiones en paralelo</h2><p>Cada mesa clasifica 50 fichas a la vez. Se toma el tiempo de la última mesa y se suman los errores.</p></article></div>
+        <p class="slide-footnote">Los errores son fichas que terminaron en la pila equivocada. Esta actividad compara la organización del aula, no mide la velocidad real de Apache Spark.</p>
+      </section>
+
+      <section class="deck-slide" data-title="Qué representa la práctica" aria-labelledby="slide-3-title" hidden>
+        <div class="debrief-layout">
+          <div><p class="eyebrow">Lo que acabamos de experimentar</p><h1 id="slide-3-title">Dividir, procesar, reunir</h1><p class="slide-lead">La segunda ronda ayuda a visualizar una idea central del procesamiento distribuido.</p></div>
+          <div class="debrief-flow">
+            <article><span>1 · Sin particionar</span><strong>Un montón común</strong><p>Las siete personas trabajan alrededor del mismo lote; se pueden formar cruces y esperas.</p></article>
+            <b aria-hidden="true">→</b>
+            <article><span>2 · Particionar</span><strong>4 × 50 fichas</strong><p>Cada mesa clasifica su lote al mismo tiempo que las otras.</p></article>
+            <b aria-hidden="true">→</b>
+            <article><span>3 · Combinar</span><strong>Un resultado</strong><p>Se espera a la última mesa y se reúnen los errores de todas.</p></article>
+          </div>
+          <p class="debrief-note"><strong>En Spark:</strong> el driver coordina tareas que procesan particiones en executors. Los grupos del aula son una analogía, no máquinas Spark reales.</p>
+        </div>
+      </section>
+
+      <section class="deck-slide theory-slide" data-title="Arquitectura de Spark" aria-label="Arquitectura de Apache Spark" hidden>
+        <iframe title="Arquitectura de Apache Spark" loading="lazy"></iframe>
+      </section>
+      <section class="deck-slide theory-slide" data-title="Ejecución y DAG" aria-label="Evaluación perezosa y DAG" hidden>
+        <iframe title="Evaluación perezosa y DAG" loading="lazy"></iframe>
+      </section>
+      <section class="deck-slide theory-slide" data-title="MLlib y K-Means" aria-label="MLlib y K-Means" hidden>
+        <iframe title="MLlib y K-Means" loading="lazy"></iframe>
+      </section>
+      <section class="deck-slide theory-slide" data-title="Usos y base relacional" aria-label="Casos de uso y comparación relacional" hidden>
+        <iframe title="Casos de uso y comparación relacional" loading="lazy"></iframe>
+      </section>
+
+      <section class="deck-slide activity-slide" data-title="Actividad web · K-Means" aria-labelledby="slide-8-title" hidden>
+        <div class="activity-bar"><div><p class="eyebrow">10–17 min · Participación desde los celulares</p><h1 id="slide-8-title">Una iteración distribuida de K-Means</h1></div><button class="btn btn-ghost" id="reloadActivity" type="button">Recargar actividad</button></div>
+        <iframe id="activityFrame" title="Consola del driver para la actividad web"></iframe>
+      </section>
+    </div>
+
+    <footer class="deck-controls">
+      <span class="deck-count" id="slideCount" aria-live="polite">1 / 8</span>
+      <div class="deck-progress" id="progress"></div>
+      <p class="keyboard-hint">← → o espacio para avanzar · F pantalla completa</p>
+      <div class="deck-buttons"><button class="btn btn-ghost" id="previous" type="button" disabled>← Anterior</button><button class="btn btn-primary" id="next" type="button">Siguiente →</button></div>
+    </footer>
+  </main>
+  <script src="/presentacion.js"></script>
+</body>
+</html>

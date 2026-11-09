@@ -1,0 +1,448 @@
+% Informe en formato IEEE (conferencia, dos columnas).
+% Compilar desde esta carpeta:  pdflatex informe.tex (dos pasadas) o tectonic informe.tex
+% IEEEtran.cls está incluido al lado para no depender de la instalación de TeX.
+
+\documentclass[conference,a4paper]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx}
+\usepackage{amsmath,amssymb}
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,calc}
+\usepackage[hidelinks]{hyperref}
+
+% IEEEtran trae los rótulos en inglés y no hay babel-spanish instalado.
+\renewcommand{\abstractname}{Resumen}
+\renewcommand{\IEEEkeywordsname}{Palabras clave}
+\renewcommand{\tablename}{TABLA}
+\renewcommand{\refname}{Referencias}
+\renewcommand{\lstlistingname}{Listado}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\bfseries,
+  columns=fullflexible,
+  keepspaces=true,
+  frame=tb,
+  framesep=3pt,
+  xleftmargin=2pt,
+  literate={á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1 {ñ}{{\~n}}1
+}
+
+% Sin patrones de español: se cortan a mano las palabras largas más frecuentes.
+\hyphenation{par-ti-cio-nes pro-ce-sa-mien-to dis-tri-bui-do dis-tri-bui-dos
+  i-te-ra-cio-nes cen-troi-de cen-troi-des e-je-cu-tor e-je-cu-to-res
+  a-gru-pa-mien-to me-mo-ria trans-for-ma-cio-nes es-pe-cu-la-ti-va
+  a-pli-ca-cio-nes al-go-rit-mo al-go-rit-mos ac-ti-vi-dad pro-yec-tor
+  ce-lu-lar ce-lu-la-res es-tu-dian-tes per-sis-ten-cia bi-blio-te-ca
+  a-pren-di-za-je}
+
+\begin{document}
+
+\title{Procesamiento distribuido y \textit{machine learning}\\sobre datos masivos con Apache Spark MLlib:\\K-Means distribuido como actividad en el aula}
+
+\author{\IEEEauthorblockN{Grupo 8}
+\IEEEauthorblockA{ITS Villada\\
+Base de Datos II · Trabajo Práctico Integrador\\
+Integrantes: Leon Guchea, Bautista Daveloze, Riccioni Santiago,\\
+Sibona Luciano y Macias Luciano\\
+Docentes: Lisandro Márquez y Teodoro Reyna\\
+Fecha: 9 de noviembre de 2026}}
+
+\begin{titlepage}
+\thispagestyle{plain}
+\centering
+\vspace*{1.5cm}
+{\Large\bfseries ITS Villada\par}
+\vspace{0.5cm}
+{\large Base de Datos II\par}
+\vfill
+{\large\bfseries TRABAJO PRÁCTICO INTEGRADOR · GRUPO 8\par}
+\vspace{1cm}
+{\LARGE\bfseries Procesamiento distribuido y \textit{machine learning}\\
+sobre datos masivos con Apache Spark MLlib\par}
+\vspace{0.75cm}
+{\large K-Means distribuido como actividad en el aula\par}
+\vfill
+{\large\bfseries Integrantes\par}
+\vspace{0.25cm}
+Leon Guchea\\
+Bautista Daveloze\\
+Riccioni Santiago\\
+Sibona Luciano\\
+Macias Luciano
+\vspace{1cm}
+
+{\large\bfseries Docentes\par}
+\vspace{0.25cm}
+Lisandro Márquez\\
+Teodoro Reyna
+\vfill
+{\large 9 de noviembre de 2026\par}
+\end{titlepage}
+\setcounter{page}{2}
+
+\maketitle
+\pagestyle{plain}
+\thispagestyle{plain}
+
+\begin{abstract}
+Cuando un conjunto de datos supera la capacidad de una sola computadora, su análisis exige repartir datos y cómputo entre muchas máquinas. Este informe presenta los fundamentos del procesamiento distribuido, desde MapReduce hasta Apache Spark, sus RDD y DataFrames, y describe cómo MLlib ejecuta K-Means sobre un clúster. Se analizan la agregación de sumas y conteos, la persistencia en memoria y la recuperación por linaje. Además, se comparan los usos de Spark con los de una base de datos relacional y se presenta una experiencia presencial que contrasta una mesa que procesa el conjunto completo con cuatro mesas que procesan particiones, seguida de una simulación web de K-Means.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Apache Spark, MLlib, MapReduce, Hadoop, K-Means, procesamiento distribuido, RDD, tolerancia a fallos, big data.
+\end{IEEEkeywords}
+
+\section{Introducción}
+
+El volumen de datos que generan hoy las organizaciones (registros de transacciones, eventos de aplicaciones, sensores) crece más rápido que la capacidad de una única máquina para almacenarlos y procesarlos. Ante este límite hay dos caminos: escalar verticalmente, comprando una computadora más potente, o escalar horizontalmente, repartiendo el trabajo entre muchas computadoras comunes conectadas en red. El segundo camino es más barato y casi no tiene techo, pero introduce problemas nuevos: cómo dividir los datos, cómo coordinar las máquinas, cuánto tráfico de red se genera y qué hacer cuando una de ellas falla o se vuelve lenta.
+
+Google formalizó una respuesta a estos problemas con el modelo MapReduce~\cite{dean2004mapreduce}, que Hadoop popularizó como software libre junto con su sistema de archivos distribuido HDFS~\cite{shvachko2010hdfs}. MapReduce resultó muy eficaz para trabajos de una sola pasada, pero ineficiente para los algoritmos iterativos típicos del aprendizaje automático, que recorren los mismos datos decenas de veces. Apache Spark~\cite{zaharia2010spark,zaharia2012rdd} nació precisamente para cubrir ese caso, manteniendo los datos en memoria entre iteraciones sin renunciar a la tolerancia a fallos.
+
+Este trabajo tiene dos objetivos. El primero es explicar los conceptos centrales de Spark y de su biblioteca de aprendizaje automático, MLlib~\cite{meng2016mllib}, tomando como caso de estudio el algoritmo de agrupamiento K-Means y comparándolo con el modelo relacional. El segundo es presentar una experiencia en dos partes: una introducción breve con tarjetas y una actividad web donde cada estudiante procesa, desde su celular, una partición de datos.
+
+El resto del informe se organiza así: la Sección~\ref{sec:marco} presenta el marco teórico; la Sección~\ref{sec:relacional} analiza casos de uso y compara Spark con el modelo relacional; la Sección~\ref{sec:kmeans} analiza K-Means y su paralelización; la Sección~\ref{sec:fallos} trata la tolerancia a fallos y el rendimiento; la Sección~\ref{sec:actividad} describe la experiencia de aula y sus resultados, y la Sección~\ref{sec:conclusiones} presenta las conclusiones.
+
+\section{Marco teórico}
+\label{sec:marco}
+
+\subsection{El modelo MapReduce}
+
+MapReduce~\cite{dean2004mapreduce} expresa un cómputo como dos funciones que escribe el programador. La función \textit{map} se aplica en paralelo a cada fragmento de la entrada y emite pares clave--valor; la función \textit{reduce} recibe todos los valores asociados a una misma clave y los combina. Entre ambas etapas, el sistema agrupa los pares por clave y los transfiere por la red (\textit{shuffle}). Opcionalmente, una función \textit{combiner} realiza una reducción parcial en cada nodo antes del \textit{shuffle}, lo que reduce el volumen transmitido cuando la operación es asociativa y conmutativa.
+
+El sistema se encarga del resto: divide la entrada, asigna tareas a las máquinas, reintenta las que fallan y lanza copias de respaldo de las tareas más lentas. Para garantizar la tolerancia a fallos, cada trabajo lee su entrada desde el sistema de archivos distribuido y escribe allí su salida, replicada en varios discos. Esta decisión es simple y robusta, pero tiene un costo: un algoritmo iterativo debe encadenar un trabajo por iteración y paga en cada uno la lectura y la escritura completas en disco.
+
+\subsection{Apache Spark y los RDD}
+
+Spark~\cite{zaharia2010spark} se apoya en una abstracción llamada \textit{Resilient Distributed Dataset} (RDD)~\cite{zaharia2012rdd}: una colección inmutable de registros, dividida en particiones repartidas entre las máquinas del clúster. Sobre un RDD se definen dos clases de operaciones:
+
+\begin{itemize}
+\item \textbf{Transformaciones} (\texttt{map}, \texttt{filter}, \texttt{reduceByKey}, \ldots), que describen un RDD nuevo a partir de otro. Son \textit{perezosas}: no se ejecutan al declararse, sino que se registran en un grafo dirigido acíclico (DAG) de dependencias.
+\item \textbf{Acciones} (\texttt{count}, \texttt{collect}, \texttt{save}, \ldots), que obligan a calcular un resultado y disparan la ejecución del DAG.
+\end{itemize}
+
+La evaluación perezosa permite al planificador ver el cómputo completo antes de ejecutarlo y fusionar en una misma etapa (\textit{stage}) las transformaciones con dependencias estrechas, es decir, aquellas en las que cada partición de salida depende de una sola partición de entrada. Las dependencias amplias, como un \texttt{reduceByKey}, requieren un \textit{shuffle} y marcan el límite entre etapas.
+
+Dos propiedades distinguen a los RDD. La primera es la \textbf{persistencia}: el programador puede pedir con \texttt{cache()} o \texttt{persist()} que un RDD quede en la memoria de los nodos tras calcularse por primera vez, para reutilizarlo sin volver a leerlo del disco. La segunda es el \textbf{linaje} (\textit{lineage}): en lugar de replicar los datos intermedios, cada RDD recuerda qué transformaciones lo produjeron a partir de datos estables. Si se pierde una partición, Spark la recalcula aplicando de nuevo esa receta solamente sobre la porción afectada~\cite{zaharia2012rdd}.
+
+Spark tampoco administra índices secundarios de propósito general como un motor relacional. Para reducir lecturas, Spark SQL puede aprovechar el plan de consultas, estadísticas y poda de particiones; los índices de un sistema de almacenamiento externo dependen de ese sistema y de su conector~\cite{spark-sql}. Del mismo modo, Spark no garantiza por sí solo transacciones ACID sobre cualquier destino: la atomicidad y consistencia de las escrituras dependen del almacenamiento y de su integración.
+
+En la versión actual, la mayoría de los programas usan la API de \textit{DataFrames} y Spark SQL, que agregan un esquema tabular y un optimizador de consultas sobre el mismo motor~\cite{zaharia2016unified}. Los conceptos de partición, DAG, persistencia y linaje se mantienen.
+
+\subsection{Arquitectura de ejecución}
+
+Una aplicación Spark se compone de los siguientes roles~\cite{spark-cluster}, ilustrados en la Fig.~\ref{fig:arquitectura}:
+
+\begin{itemize}
+\item \textbf{Driver}: el proceso que ejecuta el programa principal. Construye el DAG, lo divide en etapas y tareas, envía las tareas a los \textit{executors} y reúne los resultados.
+\item \textbf{Cluster manager} (o \textit{master}): administra los recursos del clúster y asigna máquinas a cada aplicación. Puede ser el gestor \textit{standalone} de Spark, YARN~\cite{vavilapalli2013yarn} o Kubernetes. No procesa datos.
+\item \textbf{Worker node}: cada máquina del clúster capaz de alojar procesos de la aplicación.
+\item \textbf{Executor}: proceso que corre en un \textit{worker}, ejecuta tareas sobre particiones y conserva en su memoria los datos persistidos.
+\end{itemize}
+
+Una vez asignados los recursos, el \textit{driver} se comunica directamente con los \textit{executors}; el \textit{cluster manager} no interviene en el procesamiento.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  box/.style={draw, rounded corners=2pt, minimum height=0.8cm, align=center, inner sep=3pt},
+  exe/.style={draw, rounded corners=2pt, fill=black!6, minimum width=1.5cm, minimum height=0.55cm, align=center, font=\scriptsize},
+  arr/.style={-{Stealth[length=2mm]}, thick},
+  ctl/.style={-{Stealth[length=2mm]}, dashed}
+]
+\node[box, minimum width=2.3cm] (driver) {\textbf{Driver}\\\scriptsize programa principal};
+\node[box, minimum width=2.3cm, right=1.5cm of driver] (cm) {\textbf{Cluster manager}\\\scriptsize standalone / YARN / K8s};
+
+\node[exe, below=1.4cm of driver.south west, anchor=north west, xshift=-0.5cm] (e1) {Executor\\P1, P2};
+\node[exe, right=0.5cm of e1] (e2) {Executor\\P3, P4};
+\node[exe, right=0.5cm of e2] (e3) {Executor\\P5, P6};
+
+\node[draw, dotted, fit=(e1), inner sep=4pt, label={[font=\scriptsize]below:Worker 1}] (w1) {};
+\node[draw, dotted, fit=(e2), inner sep=4pt, label={[font=\scriptsize]below:Worker 2}] (w2) {};
+\node[draw, dotted, fit=(e3), inner sep=4pt, label={[font=\scriptsize]below:Worker 3}] (w3) {};
+
+\draw[ctl] (driver) -- node[above, font=\scriptsize, align=center] {1. pide\\recursos} (cm);
+\draw[ctl] (cm.south) |- ++(0,-0.35) -| (w3.north);
+\draw[arr, <->] (driver.south) -- (w2.north);
+\draw[arr, <->] (driver.south) -- node[left, font=\scriptsize, align=right, xshift=-2pt] {3. tareas\\y resultados} (w1.north);
+\draw[arr, <->] (driver.south) -- (w3.north);
+\node[font=\scriptsize, anchor=west] at ($(cm.south)+(0.05,-0.25)$) {2. lanza executors};
+\end{tikzpicture}
+\caption{Arquitectura de una aplicación Spark. Las líneas punteadas son tráfico de control; las continuas, el intercambio de tareas y resultados. Cada executor procesa sus particiones (P1--P6).}
+\label{fig:arquitectura}
+\end{figure}
+
+\subsection{MLlib}
+
+MLlib es la biblioteca de aprendizaje automático de Spark~\cite{meng2016mllib}. Ofrece algoritmos de clasificación, regresión, agrupamiento, filtrado colaborativo y reducción de dimensionalidad, junto con herramientas para construir \textit{pipelines} de preparación de datos. Su principal ventaja es que el mismo programa que se prueba sobre una muestra en una notebook se ejecuta sin cambios sobre miles de millones de registros en un clúster.
+
+\section{Casos de uso y comparación con el modelo relacional}
+\label{sec:relacional}
+
+\subsection{Escenarios de aplicación}
+
+Spark resulta apropiado para trabajos analíticos de gran volumen que procesan muchos registros en conjunto. Un ejemplo es una tarea periódica de ETL que lee registros de ventas o eventos, limpia y transforma los datos y produce agregados para análisis con Spark SQL y DataFrames~\cite{spark-sql}. Otro es preparar características y entrenar modelos de agrupamiento, clasificación o recomendación con MLlib sobre conjuntos que se distribuyen entre varios nodos~\cite{spark-mllib}. El K-Means del informe representa el caso de segmentación de clientes; en una aplicación real, los datos pueden provenir de transacciones ya almacenadas en archivos o en un lago de datos.
+
+No conviene usar Spark como reemplazo de una base transaccional para operaciones pequeñas y frecuentes, como consultar o actualizar el saldo de una cuenta, validar restricciones y confirmar varias escrituras de manera atómica. Para esos casos, una base relacional ofrece transacciones y consultas puntuales; además, si los datos caben en una máquina, distribuirlos agrega costos de coordinación, serialización y red que pueden no compensar.
+
+\subsection{Diferencias y complementariedad}
+
+Spark no es una base NoSQL ni una base transaccional: es un motor distribuido de procesamiento. Spark SQL permite expresar operaciones sobre datos estructurados con SQL y DataFrames, pero el objetivo sigue siendo ejecutar análisis y transformaciones distribuidas, no reemplazar el procesamiento transaccional de un motor relacional~\cite{spark-sql}. Las transacciones agrupan operaciones para que se apliquen completamente o no se apliquen, una propiedad central en los sistemas de bases de datos~\cite{postgresql-transactions}.
+
+Spark tampoco replica automáticamente cada partición en memoria: el linaje permite reconstruir particiones perdidas a partir de sus transformaciones y de una fuente de datos disponible. La replicación y las garantías transaccionales dependen del sistema de almacenamiento de origen o destino y de su integración; no deben confundirse con una base de datos que administra transacciones ACID.
+
+\begin{table}[t]
+\caption{Spark frente a una base de datos relacional tradicional}
+\label{tab:relacional}
+\centering
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.7cm}>{\raggedright\arraybackslash}p{2.45cm}>{\raggedright\arraybackslash}p{2.45cm}@{}}
+\toprule
+& \textbf{Base relacional} & \textbf{Apache Spark} \\
+\midrule
+Objetivo & Consultas y transacciones operativas & Procesamiento analítico distribuido \\
+Unidad de trabajo & Filas, tablas e índices & Particiones y tareas sobre conjuntos de datos \\
+Acceso habitual & Lecturas y escrituras puntuales; transacciones & Lectura, transformación y agregación de lotes grandes \\
+Escala & Servidor optimizado y réplicas según el motor & Clúster horizontal de \textit{workers} y \textit{executors} \\
+Uso de SQL & Consultas transaccionales y analíticas & Spark SQL sobre datos distribuidos; no implica ser un motor OLTP \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+En una arquitectura habitual, ambos se complementan: la base relacional registra las operaciones del negocio y Spark lee esos datos para construir agregados o entrenar modelos. La diferencia relevante no es que uno sea siempre superior, sino el tipo de carga: transacciones puntuales frente a cómputo masivo por lotes.
+
+\section{K-Means distribuido}
+\label{sec:kmeans}
+
+\subsection{El algoritmo}
+
+Dado un conjunto de $n$ puntos $x_1,\ldots,x_n \in \mathbb{R}^d$ y un número $k$ de grupos, K-Means busca $k$ centroides $\mu_1,\ldots,\mu_k$ que minimicen la suma de los cuadrados de las distancias de cada punto a su centroide más cercano (WSSSE, \textit{within-set sum of squared errors}):
+\begin{equation}
+J = \sum_{i=1}^{n} \min_{j} \lVert x_i - \mu_j \rVert^2 .
+\label{eq:costo}
+\end{equation}
+
+El algoritmo de Lloyd~\cite{lloyd1982,macqueen1967} aproxima una solución alternando dos pasos hasta que los centroides dejan de moverse:
+\begin{enumerate}
+\item \textbf{Asignación}: cada punto se asigna al centroide más cercano, $c(i) = \arg\min_j \lVert x_i - \mu_j \rVert^2$.
+\item \textbf{Actualización}: cada centroide pasa a ser el promedio de los puntos que tiene asignados.
+\end{enumerate}
+Cada iteración no aumenta el costo $J$, por lo que el algoritmo converge, aunque puede hacerlo a un mínimo local que depende de los centroides iniciales.
+
+\subsection{Paralelización con estadísticos suficientes}
+
+El paso de asignación es trivialmente paralelo: cada \textit{executor} solo necesita sus puntos y los $k$ centroides actuales, que el \textit{driver} le envía. El paso de actualización, en cambio, requiere combinar información de todas las particiones. Para ello, cada \textit{executor} $p$ calcula, por cada grupo $j$, la suma de las coordenadas y la cantidad de puntos asignados:
+\begin{equation}
+S_{p,j} = \sum_{i \in p,\; c(i)=j} x_i, \qquad N_{p,j} = \bigl|\{ i \in p : c(i)=j \}\bigr| .
+\end{equation}
+El \textit{driver} suma estos valores y divide una sola vez:
+\begin{equation}
+\mu_j' = \frac{\sum_p S_{p,j}}{\sum_p N_{p,j}} .
+\label{eq:centroide}
+\end{equation}
+
+El par $(S, N)$ es un estadístico suficiente: contiene toda la información necesaria para calcular el promedio global y su combinación es asociativa y conmutativa, por lo que puede reducirse en árbol o en cualquier orden. El tamaño del mensaje es $k(d+1)$ números por partición, independiente de la cantidad de puntos. MLlib implementa así cada iteración: una agregación de sumas y conteos por grupo sobre el RDD persistido~\cite{meng2016mllib}.
+
+\subsection{El error del promedio de promedios}
+
+Una alternativa tentadora es que cada \textit{executor} envíe directamente el promedio de sus puntos por grupo, $\bar{x}_{p,j} = S_{p,j}/N_{p,j}$, y que el \textit{driver} promedie esos promedios. El resultado es incorrecto siempre que las particiones tengan distinta cantidad de puntos en un mismo grupo, porque se pierde el peso $N_{p,j}$. Por ejemplo, si una partición tiene un único punto en $x=10$ y otra tiene tres puntos en $x=0$:
+\begin{equation}
+\underbrace{\frac{10 + 0}{2} = 5}_{\text{promedio de promedios}}
+\quad\neq\quad
+\underbrace{\frac{10 + 0 + 0 + 0}{4} = 2{,}5}_{\text{promedio real}} .
+\end{equation}
+
+La Tabla~\ref{tab:mensajes} compara las tres estrategias que la actividad propone a los estudiantes, con $k=3$, $d=2$ y valores de 8 bytes.
+
+\begin{table}[t]
+\caption{Qué envía cada executor al driver en una iteración}
+\label{tab:mensajes}
+\centering
+\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{2.2cm}cc@{}}
+\toprule
+\textbf{Opción} & \textbf{Contenido} & \textbf{Tamaño} & \textbf{Correcto} \\
+\midrule
+A & Todos los puntos & $\propto n$ (19~MiB para $10^6$) & Sí \\
+B & Promedio por grupo & 48~B & No \\
+C & Suma y conteo por grupo & 72~B & Sí \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La opción~A es correcta pero traslada todos los datos al \textit{driver}, lo que anula la ventaja de distribuir y convierte al \textit{driver} en un cuello de botella. La opción~B es pequeña pero incorrecta. La opción~C es pequeña y correcta: es el patrón de \textit{combiner} de MapReduce aplicado a K-Means.
+
+\subsection{Inicialización y parámetros en MLlib}
+
+Como el resultado depende de los centroides iniciales, MLlib usa por defecto la inicialización \textit{k-means$\|$}~\cite{bahmani2012scalable}, una variante paralelizable de \textit{k-means++} que elige centroides iniciales dispersos en pocas pasadas sobre los datos. Los parámetros principales del estimador \texttt{pyspark.ml.clustering.KMeans} son la cantidad de grupos \texttt{k}, el máximo de iteraciones \texttt{maxIter} (20 por defecto), la tolerancia de convergencia \texttt{tol} y la semilla \texttt{seed}~\cite{spark-mllib}. El Listado~\ref{lst:pyspark} muestra un programa completo.
+
+\begin{lstlisting}[language=Python, caption={K-Means con PySpark y MLlib}, label={lst:pyspark}]
+from pyspark.ml.clustering import KMeans
+from pyspark.ml.feature import VectorAssembler
+
+df = spark.read.csv("clientes.csv",
+                    header=True, inferSchema=True)
+vec = VectorAssembler(inputCols=["x", "y"],
+                      outputCol="features")
+datos = vec.transform(df).cache()
+
+modelo = KMeans(k=3, maxIter=12, seed=1).fit(datos)
+print(modelo.clusterCenters())
+print(modelo.summary.trainingCost)  # WSSSE
+\end{lstlisting}
+
+La llamada a \texttt{cache()} es la que convierte a Spark en una herramienta adecuada para este algoritmo: sin ella, cada iteración volvería a leer y a convertir el archivo de entrada.
+
+\section{Tolerancia a fallos y rendimiento}
+\label{sec:fallos}
+
+\subsection{Recuperación por linaje}
+
+En un clúster de cientos de máquinas, las fallas son eventos normales. MapReduce y HDFS las toleran replicando los datos en disco; Spark, en cambio, reconstruye las particiones perdidas a partir de su linaje~\cite{zaharia2012rdd}. Si un \textit{executor} se cae durante una iteración de K-Means, el \textit{driver} detecta que sus tareas no terminaron y las reasigna a otros \textit{executors}, que vuelven a leer la porción correspondiente de la entrada, reaplican las transformaciones y continúan. Solo se recalcula lo perdido, sin replicar en memoria cada resultado intermedio.
+
+\subsection{Rezagados y ejecución especulativa}
+
+Como cada iteración termina cuando termina su tarea más lenta, una sola máquina rezagada (\textit{straggler}), por un disco degradado o por competir con otros procesos, retrasa a todo el clúster. Dean y Ghemawat propusieron lanzar \textit{tareas de respaldo}: cuando el trabajo está por terminar, las tareas que siguen en curso se copian en otras máquinas y se usa el resultado de la que termine primero~\cite{dean2004mapreduce}. Spark implementa la misma idea con la opción \texttt{spark.speculation}, desactivada por defecto. Al activarla, una tarea se relanza cuando dura más que un múltiplo (\texttt{spark.speculation.multiplier}, 3 en la documentación actual) de la mediana de las tareas de su etapa, una vez completada una fracción de ellas (\texttt{spark.speculation.quantile}, 0,9)~\cite{spark-config}.
+
+\subsection{Spark frente a Hadoop en algoritmos iterativos}
+
+Sea $r$ el tiempo de leer una partición desde el disco, $c$ el de procesarla y $w$ el de escribir el resultado intermedio. Para $m$ iteraciones, un encadenamiento de trabajos MapReduce cuesta aproximadamente
+\begin{equation}
+T_{\text{Hadoop}} \approx m\,(r + c + w),
+\end{equation}
+mientras que Spark, con los datos persistidos en memoria, lee una sola vez:
+\begin{equation}
+T_{\text{Spark}} \approx r + m\,c .
+\end{equation}
+Cuando la lectura domina ($r \gg c$), la ventaja crece casi linealmente con la cantidad de iteraciones. Zaharia et al. reportaron mejoras de hasta 20 veces en algoritmos iterativos de aprendizaje automático~\cite{zaharia2012rdd}. La Tabla~\ref{tab:comparacion} resume las diferencias.
+
+\begin{table}[t]
+\caption{Hadoop MapReduce y Apache Spark}
+\label{tab:comparacion}
+\centering
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.9cm}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{2.6cm}@{}}
+\toprule
+& \textbf{Hadoop MapReduce} & \textbf{Spark} \\
+\midrule
+Datos entre pasos & Disco (HDFS) & Memoria (\texttt{cache}) \\
+Modelo & Map y reduce fijos & DAG de transformaciones \\
+Tolerancia a fallos & Replicación en disco & Linaje y recálculo \\
+Iterativo & Un trabajo por iteración & Un programa, datos reutilizados \\
+APIs & Java & Scala, Java, Python, R, SQL \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Spark no es siempre la mejor opción. Si los datos caben en la memoria de una sola máquina, bibliotecas locales como pandas o scikit-learn suelen ser más rápidas, porque evitan el costo de coordinar procesos, serializar datos y transmitirlos por la red. El procesamiento distribuido se justifica cuando el volumen o el tiempo de cómputo superan lo que una máquina puede resolver.
+
+\section{Experiencia presencial y actividad web}
+\label{sec:actividad}
+
+\subsection{Objetivo y diseño}
+
+La exposición completa está planificada para 20 minutos: cinco para la práctica presencial, dos para registrar e interpretar sus resultados, tres para la presentación teórica, siete para la actividad web y tres para el cierre. En la primera ronda presencial, siete participantes clasifican las mismas 200 fichas numeradas del 1 al 200 como pares o impares, trabajando alrededor de un único montón compartido. En la segunda, las fichas se reparten en cuatro particiones de 50, procesadas por cuatro mesas de cinco personas. Un expositor coordina el inicio y reúne los resultados como analogía del \textit{driver}; otros cuatro registran el tiempo y las fichas mal clasificadas por mesa. El tiempo paralelo de la segunda ronda es el de la última mesa en terminar, no la suma de los tiempos parciales.
+
+La pantalla de carga registra la duración de la ronda tradicional, la duración de cada mesa distribuida y el número de fichas mal clasificadas en cada caso. La diapositiva de resultados muestra el tiempo de la última mesa distribuida, suma sus errores y calcula la diferencia de tiempo entre rondas. En la primera ronda, el conjunto permanece en un único montón compartido; en la segunda, cada grupo recibe una partición independiente para trabajar en paralelo. Esta comparación es didáctica, no un benchmark controlado ni una medición de Apache Spark: la cantidad de participantes y la organización cambian entre rondas, y el trabajo humano no es equivalente al cómputo de máquinas. Por ello, los tiempos solo permiten comentar esta experiencia y no atribuir a Spark una aceleración medida.
+
+La experiencia tecnológica principal es una actividad web de aproximadamente siete minutos para 27 participantes. El proyector muestra la consola del \textit{driver}; cada estudiante se une con un QR y el celular representa un \textit{executor}, con una partición de 8 puntos de un conjunto sintético de clientes y tres centroides. Cada estudiante asigna manualmente un punto al centroide que considera más cercano; la aplicación confirma la decisión y asigna automáticamente los otros siete para mantener breve la actividad. Para comparar la agregación local, la mitad izquierda del aula envía todos los puntos (A) y la mitad derecha envía sumas y cantidades (C). El \textit{driver} combina ambos tipos de resultados y actualiza los centroides. Se omite la alternativa del promedio parcial (B) en el recorrido principal para reducir la carga cognitiva; se conserva en el análisis teórico del informe.
+
+El sistema está implementado en Node.js con Express y Socket.io. Un servidor central mantiene el estado autoritativo de la simulación (particiones, centroides, tareas en curso) y lo sincroniza con el proyector y con los celulares mediante WebSockets. Puede servirse desde una computadora personal en la red del aula, sin servicios de terceros para almacenar datos. Un modo de alto contraste permite usarlo con el aula iluminada.
+
+La aplicación no ejecuta Apache Spark ni convierte los celulares en \textit{executors} Spark reales: representa didácticamente los roles, las particiones y el flujo de agregación para que la audiencia los experimente.
+
+\subsection{Fases del recorrido principal}
+
+La Tabla~\ref{tab:fases} resume las fases de la experiencia web y el concepto que ilustra cada una.
+
+\begin{table}[t]
+\caption{Fases de la experiencia web}
+\label{tab:fases}
+\centering
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{1.6cm}>{\raggedright\arraybackslash}p{3.3cm}>{\raggedright\arraybackslash}p{2.3cm}@{}}
+\toprule
+\textbf{Fase} & \textbf{Qué hacen los estudiantes} & \textbf{Concepto} \\
+\midrule
+Unirse & Escanean el QR y reciben su partición & Driver, executor, partición \\
+Procesar partición & Inician el cálculo de sus puntos; la web los asigna al centroide más cercano & Partición, tarea, asignación local \\
+Enviar & Eligen enviar todos los puntos (A) o sumas y cantidades (C) & Tráfico de red y agregación parcial \\
+Reduce & El \textit{driver} combina resultados y mueve los centroides & Reducción y una iteración de K-Means \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La secuencia oral conecta las dos rondas con los términos partición, paralelismo y agregación; después explica el \textit{driver}, los \textit{workers}/\textit{executors}, la evaluación perezosa, K-Means y MLlib. Para reservar tiempo a la participación, las fases automáticas, la simulación de fallos, la comparación de tiempos con Hadoop y la vista de código quedan como material opcional, fuera del recorrido de 20 minutos.
+
+\subsection{Registro de observaciones}
+
+La pantalla de carga presencial registra segundos y cantidad de fichas mal clasificadas: una medición para la ronda tradicional y una para cada una de las cuatro mesas distribuidas. La presentación calcula el tiempo de la última mesa y la suma de errores de las cuatro particiones. Los datos se introducen durante la exposición y describen el desempeño de los participantes en el aula; no son una medición del rendimiento de Spark.
+
+En la ronda web, la consola muestra cuántos participantes enviaron resultados y cuánto tráfico simulado se generó al enviar puntos completos o resúmenes. El volumen en bytes representa el tamaño codificado de los mensajes definido por la aplicación, no una medición del tráfico de red de un clúster Spark real.
+
+\subsection{Limitaciones}
+
+La actividad simplifica deliberadamente varios aspectos. No representa al \textit{cluster manager}, porque los celulares ya están conectados al iniciar; cada celular cumple a la vez el papel de \textit{worker} y de \textit{executor}, y los datos son bidimensionales para poder dibujarlos. El servidor central es un punto único de falla, igual que el \textit{driver} en Spark: si se detiene, la actividad debe reiniciarse.
+
+Si la red no está disponible, se reemplaza la ronda web por tarjetas con coordenadas y tres centroides impresos: las mesas asignan cada punto al centro más cercano, envían sumas y cantidades, y el grupo expositor calcula los nuevos centroides.
+
+\section{Conclusiones}
+\label{sec:conclusiones}
+
+Apache Spark reduce el costo de los algoritmos iterativos al permitir reutilizar datos en memoria y reconstruir particiones perdidas mediante linaje. K-Means muestra cómo una tarea puede repartirse: cada \textit{executor} asigna los puntos de su partición y calcula resúmenes; luego, el \textit{driver} combina sumas y cantidades para mover los centroides. La experiencia presencial compara la clasificación manual de un montón compartido de 200 fichas con la de cuatro particiones de 50 en paralelo; registra tiempos y errores observados, y explicita las limitaciones de esa comparación. Luego, en una ronda web de K-Means, la audiencia participa como \textit{executors} simulados. En conjunto, ambas prácticas conectan la intuición de repartir trabajo con las decisiones concretas de Spark y MLlib.
+
+\begin{thebibliography}{99}
+
+\bibitem{dean2004mapreduce}
+J.~Dean and S.~Ghemawat, ``MapReduce: Simplified data processing on large clusters,'' in \textit{Proc. 6th USENIX Symp. Operating Systems Design and Implementation (OSDI)}, San Francisco, CA, USA, 2004, pp.~137--150.
+
+\bibitem{shvachko2010hdfs}
+K.~Shvachko, H.~Kuang, S.~Radia, and R.~Chansler, ``The Hadoop distributed file system,'' in \textit{Proc. IEEE 26th Symp. Mass Storage Systems and Technologies (MSST)}, 2010, pp.~1--10.
+
+\bibitem{zaharia2010spark}
+M.~Zaharia, M.~Chowdhury, M.~J. Franklin, S.~Shenker, and I.~Stoica, ``Spark: Cluster computing with working sets,'' in \textit{Proc. 2nd USENIX Workshop Hot Topics in Cloud Computing (HotCloud)}, 2010.
+
+\bibitem{zaharia2012rdd}
+M.~Zaharia \textit{et al.}, ``Resilient distributed datasets: A fault-tolerant abstraction for in-memory cluster computing,'' in \textit{Proc. 9th USENIX Symp. Networked Systems Design and Implementation (NSDI)}, San Jose, CA, USA, 2012, pp.~15--28.
+
+\bibitem{zaharia2016unified}
+M.~Zaharia \textit{et al.}, ``Apache Spark: A unified engine for big data processing,'' \textit{Commun. ACM}, vol.~59, no.~11, pp.~56--65, 2016.
+
+\bibitem{meng2016mllib}
+X.~Meng \textit{et al.}, ``MLlib: Machine learning in Apache Spark,'' \textit{J. Mach. Learn. Res.}, vol.~17, no.~34, pp.~1--7, 2016.
+
+\bibitem{vavilapalli2013yarn}
+V.~K. Vavilapalli \textit{et al.}, ``Apache Hadoop YARN: Yet another resource negotiator,'' in \textit{Proc. 4th ACM Symp. Cloud Computing (SoCC)}, 2013, pp.~5:1--5:16.
+
+\bibitem{lloyd1982}
+S.~Lloyd, ``Least squares quantization in PCM,'' \textit{IEEE Trans. Inf. Theory}, vol.~28, no.~2, pp.~129--137, 1982.
+
+\bibitem{macqueen1967}
+J.~MacQueen, ``Some methods for classification and analysis of multivariate observations,'' in \textit{Proc. 5th Berkeley Symp. Mathematical Statistics and Probability}, vol.~1, 1967, pp.~281--297.
+
+\bibitem{bahmani2012scalable}
+B.~Bahmani, B.~Moseley, A.~Vattani, R.~Kumar, and S.~Vassilvitskii, ``Scalable k-means++,'' \textit{Proc. VLDB Endowment}, vol.~5, no.~7, pp.~622--633, 2012.
+
+\bibitem{spark-cluster}
+The Apache Software Foundation, ``Cluster mode overview,'' \textit{Apache Spark Documentation}. [Online]. Available: \url{https://spark.apache.org/docs/latest/cluster-overview.html} (accedido: nov. 2026).
+
+\bibitem{spark-mllib}
+The Apache Software Foundation, ``Clustering --- K-means,'' \textit{Apache Spark MLlib Guide}. [Online]. Available: \url{https://spark.apache.org/docs/latest/ml-clustering.html} (accedido: nov. 2026).
+
+\bibitem{spark-sql}
+The Apache Software Foundation, ``Spark SQL, DataFrames and Datasets Guide,'' \textit{Apache Spark Documentation}. [Online]. Available: \url{https://spark.apache.org/docs/latest/sql-programming-guide.html} (accedido: nov. 2026).
+
+\bibitem{spark-config}
+The Apache Software Foundation, ``Spark configuration,'' \textit{Apache Spark Documentation}. [Online]. Available: \url{https://spark.apache.org/docs/latest/configuration.html} (accedido: nov. 2026).
+
+\bibitem{postgresql-transactions}
+The PostgreSQL Global Development Group, ``Transactions,'' \textit{PostgreSQL Documentation}. [Online]. Available: \url{https://www.postgresql.org/docs/current/tutorial-transactions.html} (accedido: nov. 2026).
+
+\end{thebibliography}
+
+\end{document}

@@ -40,9 +40,12 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 4000, pingTimeout: 7000 });
 
-const publicDir = path.join(__dirname, 'public');
+const publicDir = path.join(__dirname, 'presentacion-web', 'public');
 app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'worker.html')));
 app.get('/driver', (_req, res) => res.sendFile(path.join(publicDir, 'driver.html')));
+app.get('/fichas', (_req, res) => res.sendFile(path.join(publicDir, 'fichas.html')));
+app.get('/teoria', (_req, res) => res.sendFile(path.join(publicDir, 'teoria.html')));
+app.get('/presentacion', (_req, res) => res.sendFile(path.join(publicDir, 'presentacion.html')));
 // Atkinson Hyperlegible: drawn for legibility at a distance, which is
 // exactly the back row of a classroom looking at a projector.
 app.use('/fonts/sans', express.static(path.join(__dirname, 'node_modules/@fontsource-variable/atkinson-hyperlegible-next/files'), { maxAge: '7d' }));
@@ -790,5 +793,6 @@ function buildIconSprite(names) {
 server.listen(PORT, () => {
   console.log('\n  Clúster en el aula');
   console.log(`  Alumnos:   ${PUBLIC_URL}`);
+  console.log(`  Presentación: http://localhost:${PORT}/presentacion?key=${DRIVER_KEY}`);
   console.log(`  Proyector: http://localhost:${PORT}/driver?key=${DRIVER_KEY}\n`);
 });

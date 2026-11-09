@@ -1,69 +1,46 @@
-# Clúster en el aula
+# Grupo 8 · Apache Spark y MLlib
 
-Actividad en vivo para la presentación de **Procesamiento distribuido y ML sobre datos masivos (Apache Spark / MLlib)**.
-La clase se convierte en un clúster de Spark y entrena un K-Means entre todos:
+La exposición dura 20 minutos:
 
-- **Proyector = Driver** (`/driver`): reparte el trabajo, reduce, muestra el modelo.
-- **Celular de cada alumno = Executor** (`/`): recibe una partición del dataset, la procesa y manda resultados.
+| Minutos | Parte |
+|---|---|
+| 0–5 | Práctica presencial con tarjetas ([guion 1](guiones/01-practica-presencial.md)) |
+| 5–6 | Carga y presentación de resultados |
+| 6–7 | Explicación de la práctica |
+| 7–10 | Cuatro diapositivas teóricas ([guion 2](guiones/02-exposicion-teorica.md)) |
+| 10–17 | Actividad web de K-Means ([guion 3](guiones/03-actividad-web.md)) |
+| 17–20 | Interpretación final y cierre |
 
-## Correrlo
+## Ejecutar la presentación unificada
 
-```bash
-npm install
-DRIVER_KEY=una-clave npm start
+Desde PowerShell, entren a la carpeta `Actividad-BaseDeDatos` y arranquen el servidor:
+
+```powershell
+cd "D:\Leon\ITS Villada\Base de datos\bd2\presntacion\Actividad-BaseDeDatos"
+npm start
 ```
 
-El servidor imprime dos URLs:
+La terminal imprime tres direcciones. Abran **Presentación** en la computadora conectada al proyector; esa URL ya incluye la clave para la actividad web.
 
-- **Alumnos**: la que va en el QR.
-- **Proyector**: `http://localhost:3000/driver?key=una-clave`. Abrila en tu compu. La clave se borra de la barra de direcciones al entrar, así no queda a la vista en el proyector.
+### Orden de la exposición (20 minutos)
 
-Sin `DRIVER_KEY`, se genera una clave al azar en cada arranque.
+1. **0–5 · Práctica presencial:** siete personas clasifican 200 fichas en un montón compartido; después, cuatro mesas clasifican las mismas fichas en lotes de 50.
+2. **5–6 · Resultados:** pulsen **Cargar resultados** en la presentación. En la pestaña aparte, ingresen solo segundos y fichas mal clasificadas: una ronda tradicional y cada una de las cuatro mesas. La presentación calcula el tiempo de la última mesa y suma sus errores.
+3. **6–7 · Interpretación:** expliquen el montón compartido y las esperas del método tradicional frente a las cuatro particiones procesadas en paralelo. Aclaren que es una analogía de aula, no una medición de Spark.
+4. **7–10 · Teoría:** avancen por las cuatro láminas integradas: arquitectura; particiones, DAG y evaluación perezosa; MLlib/K-Means; usos y comparación con una base relacional.
+5. **10–17 · Actividad web:** en la última diapositiva, la consola del proyector representa el driver. La audiencia escanea el QR, ingresa su nombre, asigna un punto al centroide más cercano y envía el formato que le corresponda (A o C). Cuando todos enviaron, pulsen **Reducir**.
+6. **17–20 · Cierre:** expliquen qué se observó en K-Means, dónde conviene Spark y cómo se complementa con una base relacional.
 
-### Con Cloudflare Tunnel
+Avancen con **← / →**, **espacio** o los botones inferiores. Usen **F** o el botón de pantalla completa para proyectar. La carga de datos queda en otra pestaña y no forma parte de lo que se proyecta.
 
-```bash
-# 1. el túnel apuntando al servidor local
-cloudflared tunnel --url http://localhost:3000            # túnel rápido, URL random
-# o con tu dominio (túnel con nombre ya configurado):
-cloudflared tunnel route dns <tunel> cluster.tudominio.com
-cloudflared tunnel run --url http://localhost:3000 <tunel>
+Los celulares y la computadora deben poder comunicarse por la red del aula. Ensáyenlo antes con un celular, no solamente desde la computadora del grupo.
 
-# 2. arrancá el servidor diciéndole su URL pública, para que el QR apunte ahí
-PUBLIC_URL=https://cluster.tudominio.com DRIVER_KEY=una-clave npm start
-```
+## Organización de los materiales
 
-Socket.io usa WebSockets, que Cloudflare Tunnel soporta sin configuración extra. Con HTTPS, además, los celulares pueden mantener la pantalla prendida sola (Wake Lock).
+- [informe/](informe/) contiene el informe en LaTeX, el PDF de referencia y la clase IEEE.
+- [presentacion-web/](presentacion-web/) contiene la presentación unificada `/presentacion`, las pantallas del proyector y participantes, las láminas teóricas y la carga privada de resultados. El servidor y sus dependencias siguen en la raíz.
+- [guiones/](guiones/) contiene tres guiones separados y la propuesta breve para aprobación.
 
-### Ensayar sin gente
+El PDF incluido está actualizado con los datos del grupo y se generó desde [informe/informe.tex](informe/informe.tex). Si modifican la fuente antes de entregar, vuelvan a compilar el PDF desde la carpeta `informe` con LaTeX (dos pasadas de `pdflatex`) o con Tectonic.
 
-```bash
-npm run bots -- 25        # 25 executors falsos contra localhost:3000
-URL=https://cluster.tudominio.com npm run bots -- 10
-```
-
-Los bots asignan sus puntos (con algún error, como una clase real), eligen qué mandar y procesan tareas respetando las demoras.
-
-## Guion (~15 min)
-
-| Fase | Qué hacen los alumnos | Concepto |
-|---|---|---|
-| **Unirse** | Escanean el QR y ponen su nombre | Executors que se registran en el driver |
-| **Map a mano** | Asignan sus 8 puntos al centroide más cercano y eligen qué mandar: A) todos los puntos, B) promedios, C) sumas + cantidad | Partición, tarea, map, combiner |
-| **Reduce** | Miran el proyector: los promedios (B) corren un centroide; los puntos (A) pesan 19 MB a escala real | Shuffle, agregación parcial, promedio de promedios |
-| **Modo Spark** | Sus celulares calculan solos. Volvés a uno *straggler* y mirás la ejecución especulativa | Iteraciones, stragglers, `spark.speculation` |
-| **Fallos** | Tirás nodos abajo (o alguien cierra la pestaña de verdad) y sus particiones se recalculan en otro | Lineage de los RDD, tolerancia a fallos |
-| **Hadoop vs Spark** | Mismo job dos veces: leyendo de disco en cada iteración o con `cache()` | Por qué Spark sirve para ML iterativo |
-| **Código** | Las 8 líneas de PySpark con los valores reales de la clase | `KMeans(k=3).fit(df)` |
-
-Atajos en el proyector: `←` `→` cambian de fase, `Espacio` ejecuta o pausa, `T` activa el alto contraste (para un aula con luz), `Q` muestra el QR y `F` pone pantalla completa.
-
-## Estructura
-
-- `server.js`: servidor Express + Socket.io con todo el estado del clúster (fases, particiones, tareas, especulación, lineage).
-- `lib/kmeans.js`: dataset sintético y las cuentas de K-Means.
-- `public/driver.*`: consola del proyector.
-- `public/worker.*`: vista del celular.
-- `scripts/bots.js`: executors falsos para ensayar.
-
-El dataset es **sintético** (clientes de un súper: gasto mensual y visitas por año, con tres segmentos escondidos).
+La primera ronda usa siete personas con las 200 fichas en un montón compartido; la segunda usa cuatro mesas de cinco personas con las mismas fichas, 50 por mesa. La pantalla compara tiempos y fichas mal clasificadas, pero advierte que no es un benchmark controlado ni una medición de Apache Spark. La actividad web es otra experiencia breve: una simulación didáctica del flujo de K-Means; los teléfonos no ejecutan Spark real. En esta ronda, la mitad izquierda de la clase elige enviar los puntos completos y la derecha un resumen.

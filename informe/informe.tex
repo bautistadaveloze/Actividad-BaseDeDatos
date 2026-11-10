@@ -8,7 +8,6 @@
 \usepackage[T1]{fontenc}
 \usepackage{mathptmx}
 \usepackage{amsmath,amssymb}
-\usepackage{cite}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
@@ -46,29 +45,21 @@
 
 \begin{document}
 
-\title{Procesamiento distribuido y \textit{machine learning}\\sobre datos masivos con Apache Spark MLlib:\\K-Means distribuido como actividad en el aula}
-
-\author{\IEEEauthorblockN{Grupo 8}
-\IEEEauthorblockA{ITS Villada\\
-Base de Datos II · Trabajo Práctico Integrador\\
-Integrantes: Leon Guchea, Bautista Daveloze, Riccioni Santiago,\\
-Sibona Luciano y Macias Luciano\\
-Docentes: Lisandro Márquez y Teodoro Reyna\\
-Fecha: 9 de noviembre de 2026}}
-
 \begin{titlepage}
-\thispagestyle{plain}
+\thispagestyle{empty}
 \centering
-\vspace*{1.5cm}
+\vspace*{2cm}
 {\Large\bfseries ITS Villada\par}
 \vspace{0.5cm}
 {\large Base de Datos II\par}
 \vfill
-{\large\bfseries TRABAJO PRÁCTICO INTEGRADOR · GRUPO 8\par}
-\vspace{1cm}
+{\large\bfseries INFORME DE INVESTIGACIÓN\par}
+\vspace{0.6cm}
+{\large Grupo N° 8\par}
+\vspace{1.5cm}
 {\LARGE\bfseries Procesamiento distribuido y \textit{machine learning}\\
 sobre datos masivos con Apache Spark MLlib\par}
-\vspace{0.75cm}
+\vspace{0.5cm}
 {\large K-Means distribuido como actividad en el aula\par}
 \vfill
 {\large\bfseries Integrantes\par}
@@ -78,20 +69,19 @@ Bautista Daveloze\\
 Riccioni Santiago\\
 Sibona Luciano\\
 Macias Luciano
-\vspace{1cm}
+\vspace{0.8cm}
 
 {\large\bfseries Docentes\par}
 \vspace{0.25cm}
 Lisandro Márquez\\
 Teodoro Reyna
 \vfill
-{\large 9 de noviembre de 2026\par}
+{\large 11 de noviembre de 2026\par}
+\vspace*{1cm}
 \end{titlepage}
-\setcounter{page}{2}
-
-\maketitle
+\pagenumbering{arabic}
+\setcounter{page}{1}
 \pagestyle{plain}
-\thispagestyle{plain}
 
 \begin{abstract}
 Cuando un conjunto de datos supera la capacidad de una sola computadora, su análisis exige repartir datos y cómputo entre muchas máquinas. Este informe presenta los fundamentos del procesamiento distribuido, desde MapReduce hasta Apache Spark, sus RDD y DataFrames, y describe cómo MLlib ejecuta K-Means sobre un clúster. Se analizan la agregación de sumas y conteos, la persistencia en memoria y la recuperación por linaje. Además, se comparan los usos de Spark con los de una base de datos relacional y se presenta una experiencia presencial que contrasta una mesa que procesa el conjunto completo con cuatro mesas que procesan particiones, seguida de una simulación web de K-Means.

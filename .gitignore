@@ -4,6 +4,9 @@ node_modules/
 .impeccable/questions/
 
 # LaTeX
+informe/*.aux
+informe/*.log
+informe/*.out
 specs/informe/*.aux
 specs/informe/*.log
 specs/informe/*.out

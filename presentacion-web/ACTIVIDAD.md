@@ -355,3 +355,132 @@ Para ensayar, `/?nombre=Ana` entra directo con ese nombre, y cada pestaña abier
 | T | Alto contraste |
 | F | Pantalla completa. Incrustado, avisa a la página contenedora con `parent.postMessage({ type: 'deck-fullscreen' }, location.origin)` |
 | Esc | Cierra el QR |
+
+## 9. Capa de juego
+
+Tres agregados para que la actividad sea más divertida sin sumar decisiones en el celular: una **carrera al pintar**, una **ruleta** para apagar una compu y un **festejo** con medallas. Esta sección manda sobre las anteriores donde se contradigan.
+
+### 9.1 Carrera al pintar (fase `paint`)
+
+**Reglas**
+- Cada celular tiene un tiempo de pintado: desde que recibe sus puntos (al empezar `paint`, o al entrar tarde durante `paint`) hasta que toca "Enviar al coordinador". Lo mide el servidor.
+- Cada error suma una penalidad de 3 s (`PENALTY_MS = 3000`). El puntaje es `ms + PENALTY_MS × errores`; gana el menor. Desempate: menor `ms`, después menor `id`.
+- El podio son los 3 mejores puntajes entre los que ya enviaron. Se actualiza en vivo.
+- **Entre todos contra uno solo:**
+  - `parallelMs` = el `ms` del que más tardó entre los que enviaron. El grupo termina cuando termina el último.
+  - `soloMs` = (suma de los `ms` de los que enviaron ÷ suma de los puntos que pintaron) × cantidad total de puntos. Es lo que tardaría una sola persona pintando todo.
+  - Si nadie envió, los dos son `null`.
+
+**Celular**
+- Mientras pinta: arriba a la derecha, un cronómetro chico que corre ("12 s").
+- Al errar: "Casi. Fijate otra vez: hay un centro más cerca. +3 s".
+- Al enviar: título "Enviado", después "Tardaste 14,2 s" (y si hubo errores: " · 1 error, +3 s"), y "Puesto 5 de los 14 que terminaron". Si está entre los 3 primeros: "¡Estás en el podio!" destacado. Se actualiza en vivo a medida que terminan otros.
+- En `combine`: además del texto de 4.3, "Entre todos tardaron 25 s. Una sola persona habría tardado unos 6 minutos."
+
+**Proyector**
+- En `paint`, al lado del dibujo (debajo de la leyenda): tarjeta "Los más rápidos" con el podio (puesto, nombre, tiempo con un decimal y, si tuvo errores, "+3 s" por error). Mientras nadie terminó: "Todavía nadie terminó." Abajo, en chico: "Cada error suma 3 s."
+- En `combine`, la comparación es el momento fuerte de la pantalla: dos barras horizontales a la misma escala.
+  - "Entre todos · 25 s" (barra corta, color de acento).
+  - "Una sola persona · unos 6 minutos" (barra larga, gris).
+  - Debajo, en chico: "El grupo terminó cuando terminó el último: Tomi." (`slowest.name`).
+  - Va junto al dato "Por la red viajaron N resúmenes, no M puntos."
+
+**Formato de tiempos** (es-AR): menos de 60 s, con un decimal ("14,2 s"). Para `soloMs`: menos de 90 s, "unos 50 segundos"; si no, "unos N minutos" con N redondeado (mínimo 2).
+
+### 9.2 Ruleta (fase `fail`)
+
+**Reglas**
+- El proyector emite `spin`. Vale en `fail`, sin otra ruleta en curso, sin vuelta en curso y con al menos 2 compus prendidas y conectadas.
+- El servidor elige la víctima al azar entre las prendidas y conectadas que tienen puntos. Los **candidatos** son todas las prendidas y conectadas.
+- La ruleta dura `SPIN_MS` (4500 por defecto; se puede cambiar con la variable de entorno `SPIN_MS` para las pruebas). Al terminar, el servidor apaga a la víctima con las mismas reglas que `kill` (6.6). Si la víctima se desconectó mientras giraba, elige otra válida; si no queda ninguna, cancela.
+- Mientras gira, se ignoran `spin`, `kill`, `revive`, `round` y `run { on: true }`. Cambiar de fase o `reset` la cancelan.
+- `lastFail` ahora incluye `n` (contador que sube con cada apagado), `victimId` y `heirId`, además de `victim`, `heir` y `points`.
+- Tocar una ficha en el proyector sigue apagando esa compu directo, sin ruleta.
+
+**Proyector**
+- El botón "Apagar una al azar" pasa a ser "Girar la ruleta" (ícono `dices`; tecla K).
+- Mientras gira: las fichas de los candidatos se iluminan de a una, saltando rápido al principio y cada vez más lento, y la última iluminada es la víctima justo al terminar los `ms`. En el escenario, sobre el dibujo, un cartel grande: "Girando la ruleta…".
+- Al frenar: la ficha de la víctima titila en rojo y aparece la tarjeta del apagado de 4.5.
+- La animación es del proyector: arranca cuando llega un `spin` con un `n` nuevo y dura `spin.ms`.
+
+**Celular**
+- Si es candidato mientras gira: pantalla `spin`, con el título "¿Se apaga tu compu?", el texto "La ruleta está girando…" y una animación de las tres formas girando.
+- Cuando cambia `lastFail.n`:
+  - La víctima ve la pantalla de apagado, ahora con el título "¡Te tocó!" y el texto "Tu compu se apagó. Es de mentira: tus puntos ahora los pinta Bruno. No se perdió nada."
+  - El heredero ve el aviso "Te tocó trabajar: heredaste 6 puntos de Ana. Ahora tenés 12."
+  - El resto ve el aviso "¡Te salvaste! Se apagó la compu de Ana."
+
+### 9.3 Festejo y medallas
+
+**Festejo:** cuando `converged` pasa de `false` a `true`:
+- En el proyector, una lluvia de formas (círculos, cuadrados y triángulos con los colores de los grupos) que cae durante unos 2,5 s sobre el escenario. Se hace con CSS o canvas propio, sin librerías.
+- Los celulares vibran con `[80, 60, 80, 60, 200]` y la pantalla "Terminamos" entra con una animación corta.
+- Con `prefers-reduced-motion` no hay lluvia ni animación (la vibración queda).
+
+**Medallas:** el servidor las calcula para cada celular. Claves, en este orden:
+
+| Clave | Cuándo | Texto en el celular | Ícono |
+|---|---|---|---|
+| `fastest` | Puesto 1 de la carrera | La compu más rápida | `trophy` |
+| `podium` | Puesto 2 o 3 | En el podio | `medal` |
+| `perfect` | Envió sin errores | Cero errores | `target` |
+| `heir` | Alguna vez heredó puntos | Hiciste trabajo de otra compu | `heart-handshake` |
+| `survivor` | Fue candidata en una ruleta que terminó y no fue la víctima | Sobreviviste a la ruleta | `shield-check` |
+| `fallen` | Fue víctima de la ruleta o la apagaron tocando su ficha | Te apagaron y no se perdió nada | `power-off` |
+| `cluster` | Solo si no tiene ninguna otra | Parte del clúster | `users` |
+
+**Celular, en `end`:** debajo de "Gracias por ser parte del clúster" y de su línea de números, sus medallas como tarjetas grandes con ícono y texto. Si tiene `fastest` o `podium`, también "Puesto N en la carrera".
+
+**Proyector, en `end`:** debajo de los números del aula, la línea "Podio de pintura: 1. Ana 9,8 s · 2. Bruno 10,4 s · 3. Caro 11,0 s".
+
+### 9.4 Cambios al contrato de sockets
+
+**Celular → servidor**
+
+| Evento | Datos |
+|---|---|
+| `paint:submit` | `{ mistakes }`: entero de 0 a 500. Si falta o no es válido, cuenta 0 |
+
+**Proyector → servidor**
+
+| Evento | Datos | Efecto |
+|---|---|---|
+| `spin` | — | Gira la ruleta (9.2) |
+
+**Servidor → proyector, campos nuevos de `state`**
+
+```js
+{
+  race: {
+    podium: [{ id: 3, name: 'Caro', ms: 9800, mistakes: 0, score: 9800 }],  // hasta 3
+    finished: 14,          // celulares que enviaron
+    parallelMs: 25300,     // o null
+    soloMs: 336000,        // o null
+    slowest: { name: 'Tomi', ms: 25300 },  // o null
+    penaltyMs: 3000,
+  },
+  spin: null | { n: 1, candidates: [1, 2, 4, 7], victim: 7, ms: 4500 },
+  lastFail: null | { n: 1, victim: 'Ana', victimId: 7, heir: 'Bruno', heirId: 2, points: 6 },
+}
+```
+
+**Servidor → celular, campos nuevos de `state`**
+
+```js
+{
+  me: {
+    // ...lo de 7.2, más:
+    paint: null | { ms: 14200, mistakes: 1, score: 17200, rank: 5, of: 14 },
+    medals: ['podium', 'perfect'],
+  },
+  race: { parallelMs: 25300, soloMs: 336000 },   // cada uno puede ser null
+  spin: null | { n: 1, ms: 4500 },   // solo si hay una ruleta girando y este celular es candidato
+  lastFail: null | { n: 1, victim: 'Ana', heir: 'Bruno', points: 6, me: 'victim' | 'heir' | 'safe' },
+}
+```
+
+`lastFail.me` vale `'safe'` para todos los que no son víctima ni heredero, incluidos los que no fueron candidatos.
+
+**Íconos nuevos** para `/icons.svg`: `trophy`, `medal`, `award`, `target`, `heart-handshake`, `shield-check`, `dices`, `party-popper`.
+
+**Teclas:** K ahora gira la ruleta (en `fail`).

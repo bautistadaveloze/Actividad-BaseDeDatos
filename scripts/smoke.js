@@ -10,8 +10,10 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { io } = require('socket.io-client');
 const km = require('../lib/kmeans');
+const { compareRace } = require('../server');
 
 const KEY = 'smoke-key';
+const SPIN_MS = 700; // short roulette so the test does not wait 4.5 s
 const failures = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const same = (a, b) => Math.abs(a - b) < 1e-9;
@@ -39,7 +41,7 @@ function freePort() {
 function startServer(port) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-      env: { ...process.env, PORT: String(port), DRIVER_KEY: KEY, PUBLIC_URL: `http://localhost:${port}` },
+      env: { ...process.env, PORT: String(port), DRIVER_KEY: KEY, PUBLIC_URL: `http://localhost:${port}`, SPIN_MS: String(SPIN_MS) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let out = '';
@@ -99,6 +101,7 @@ function waitFor(c, pred, label, ms = 6000) {
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const isPoint = (p) => p && isNum(p.x) && isNum(p.y);
 const PHASES = ['lobby', 'paint', 'combine', 'auto', 'fail', 'end'];
+const MEDALS = ['fastest', 'podium', 'perfect', 'heir', 'survivor', 'fallen', 'cluster'];
 const STATUSES = ['waiting', 'painting', 'sent', 'idle', 'working', 'off', 'offline'];
 
 function checkDriverShape(s, where) {
@@ -115,7 +118,15 @@ function checkDriverShape(s, where) {
   ok(Array.isArray(s.shifts) && s.shifts.every(isNum), 'shifts');
   ok(s.progress && isNum(s.progress.done) && isNum(s.progress.total), 'progress{done,total}');
   ok(typeof s.busy === 'boolean' && typeof s.running === 'boolean' && typeof s.converged === 'boolean', 'busy/running/converged');
-  ok(s.lastFail === null || (typeof s.lastFail.victim === 'string' && typeof s.lastFail.heir === 'string' && isNum(s.lastFail.points)), 'lastFail');
+  ok(s.lastFail === null || (isNum(s.lastFail.n) && typeof s.lastFail.victim === 'string' && isNum(s.lastFail.victimId)
+    && typeof s.lastFail.heir === 'string' && isNum(s.lastFail.heirId) && isNum(s.lastFail.points)), 'lastFail{n,victim,victimId,heir,heirId,points}');
+  const r = s.race;
+  ok(r && Array.isArray(r.podium) && r.podium.length <= 3 && r.podium.every((e) => isNum(e.id) && typeof e.name === 'string'
+    && isNum(e.ms) && Number.isInteger(e.mistakes) && e.score === e.ms + r.penaltyMs * e.mistakes)
+    && isNum(r.finished) && r.penaltyMs === 3000, 'race{podium,finished,penaltyMs}');
+  ok(r && (r.parallelMs === null || isNum(r.parallelMs)) && (r.soloMs === null || isNum(r.soloMs))
+    && (r.slowest === null || (typeof r.slowest.name === 'string' && isNum(r.slowest.ms))), 'race{parallelMs,soloMs,slowest}');
+  ok(s.spin === null || (isNum(s.spin.n) && Array.isArray(s.spin.candidates) && s.spin.candidates.includes(s.spin.victim) && isNum(s.spin.ms)), 'spin');
   ok(s.stats && isNum(s.stats.phones) && isNum(s.stats.points) && isNum(s.stats.summaries), 'stats{phones,points,summaries}');
   ok(s.trail.length === s.round + 1 && s.shifts.length === s.round, 'trail y shifts coherentes con round');
   ok(same(s.trail[s.trail.length - 1][0].x, s.centers[0].x), 'la última posición de trail es centers');
@@ -134,6 +145,13 @@ function checkPhoneShape(s, where) {
   ok(typeof s.paintKey === 'string' && /^\d+:\d+$/.test(s.paintKey), 'paintKey');
   ok(Number.isInteger(s.round) && typeof s.converged === 'boolean', 'round/converged');
   ok(s.totals && isNum(s.totals.phones) && isNum(s.totals.points), 'totals{phones,points}');
+  ok(m.paint === null || (isNum(m.paint.ms) && Number.isInteger(m.paint.mistakes) && isNum(m.paint.score)
+    && Number.isInteger(m.paint.rank) && Number.isInteger(m.paint.of)), 'me.paint');
+  ok(Array.isArray(m.medals) && m.medals.length >= 1 && m.medals.every((x) => MEDALS.includes(x)), 'me.medals');
+  ok(s.race && (s.race.parallelMs === null || isNum(s.race.parallelMs)) && (s.race.soloMs === null || isNum(s.race.soloMs)), 'race{parallelMs,soloMs}');
+  ok(s.spin === null || (isNum(s.spin.n) && isNum(s.spin.ms)), 'spin{n,ms}');
+  ok(s.lastFail === null || (isNum(s.lastFail.n) && typeof s.lastFail.victim === 'string' && typeof s.lastFail.heir === 'string'
+    && isNum(s.lastFail.points) && ['victim', 'heir', 'safe'].includes(s.lastFail.me)), 'lastFail{n,victim,heir,points,me}');
 }
 
 // ---------------------------------------------------------------- convergence (6.5)
@@ -421,6 +439,224 @@ async function activity(port) {
   check(driver.state.phones.filter((p) => p.name === 'Ana').length === 1, 'sin duplicados al reconectar');
 }
 
+// ---------------------------------------------------------------- the game layer (section 9)
+
+function tieBreak() {
+  const e = (id, ms, mistakes) => ({ id, ms, mistakes, score: ms + 3000 * mistakes });
+  const order = (list) => [...list].sort(compareRace).map((x) => x.id).join();
+  check(order([e(1, 20000, 0), e(2, 11000, 3), e(3, 12000, 1)]) === '3,2,1', 'ranking: gana el menor puntaje (ms + 3 s por error), con desempate por ms');
+  check(order([e(1, 13000, 0), e(2, 10000, 1)]) === '2,1', 'desempate: mismo puntaje, gana el menor ms');
+  check(order([e(5, 10000, 1), e(2, 10000, 1), e(9, 10000, 1)]) === '2,5,9', 'desempate: mismo puntaje y ms, gana el menor id');
+}
+
+const medalsOf = (c) => c.state.me.medals.join();
+
+async function game(port) {
+  const url = `http://localhost:${port}`;
+  const names = ['Ana', 'Bruno', 'Caro', 'Dani', 'Eze'];
+
+  step('juego: carrera al pintar');
+  const driver = connect(url, { role: 'driver', key: KEY });
+  const phones = names.map((name, i) => connect(url, { role: 'worker', token: `g${i}`, name }));
+  await waitFor(driver, (s) => s.phones.length === 5, '5 celulares');
+  for (const p of phones) await waitFor(p, (st) => st.me, 'estado del celular');
+  const ids = phones.map((p) => p.state.me.id);
+  const rst0 = driver.state;
+  check(rst0.race.finished === 0 && rst0.race.podium.length === 0 && rst0.race.parallelMs === null
+    && rst0.race.soloMs === null && rst0.race.slowest === null && rst0.race.penaltyMs === 3000, 'race vacío antes de que alguien envíe');
+  check(rst0.spin === null && rst0.lastFail === null, 'sin ruleta ni apagado al principio');
+  driver.socket.emit('phase', { phase: 'paint' });
+  await waitFor(driver, (s) => s.phase === 'paint' && s.points.length === 30, 'paint con 30 puntos');
+  await waitFor(phones[4], (s) => s.phase === 'paint' && s.points.length === 6 && s.me.paint === null, 'celular sin resultado de carrera todavía');
+  check(phones.every((p) => p.state.me.paint === null && p.state.race.parallelMs === null && p.state.race.soloMs === null), 'me.paint = null y race nulo antes de enviar');
+  const t0 = Date.now();
+
+  // Submission order and mistakes: (index, wait, payload, expected mistakes).
+  // Ana is first and clean, Dani is last-but-one and clean, Bruno is earlier than Dani but has a mistake.
+  const plan = [
+    [0, 500, { mistakes: 0 }, 0],
+    [2, 1000, { mistakes: 2.5 }, 0], // not an integer
+    [1, 1500, { mistakes: 1 }, 1],
+    [3, 2000, { mistakes: -1 }, 0], // negative
+    [4, 2500, { mistakes: 501 }, 0], // over the limit
+  ];
+  let sent = 0;
+  for (const [i, at, payload] of plan) {
+    await sleep(Math.max(0, at - (Date.now() - t0)));
+    phones[i].socket.emit('paint:submit', payload);
+    sent += 1;
+    await waitFor(driver, (s) => s.race.finished === sent, `race.finished = ${sent}`);
+    if (sent === 1) {
+      const r = driver.state.race;
+      const mine = await waitFor(phones[0], (s) => s.me.paint, 'me.paint del primero');
+      check(r.podium.length === 1 && r.podium[0].id === ids[0] && r.podium[0].mistakes === 0, 'el podio tiene al primero que envió');
+      check(r.parallelMs === mine.me.paint.ms && r.slowest.name === 'Ana' && r.slowest.ms === r.parallelMs, 'con uno solo, parallelMs = su ms y slowest es él');
+      check(r.soloMs === Math.round(mine.me.paint.ms / 6 * 30), 'soloMs de uno solo = su ms por 5 (30 puntos / 6)');
+      check(mine.me.paint.rank === 1 && mine.me.paint.of === 1, 'me.paint.rank 1 de 1');
+      check(mine.me.paint.ms >= 400 && mine.me.paint.ms < 1500, `ms medido por el servidor (${mine.me.paint.ms})`);
+    }
+  }
+  const dup = driver.state.race.finished;
+  phones[0].socket.emit('paint:submit', { mistakes: 3 }); // already sent: must not count again
+  await sleep(200);
+  check(driver.state.race.finished === dup && phones[0].state.me.paint.mistakes === 0, 'un segundo envío no cambia el resultado');
+
+  const race = driver.state.race;
+  const paints = await Promise.all(phones.map(async (p) => (await waitFor(p, (s) => s.me.paint && s.me.paint.of === 5, 'me.paint con of = 5')).me.paint));
+  const expectOrder = [0, 2, 3, 4, 1]; // by score: Bruno's mistake (+3 s) sends him behind Eze, who sent a second later
+  check(paints.every((x, i) => x.mistakes === plan.find((q) => q[0] === i)[3]), 'mistakes inválidos cuentan 0 y los válidos se respetan');
+  check(paints.every((x) => x.score === x.ms + 3000 * x.mistakes), 'score = ms + 3000 x errores');
+  check(expectOrder.every((i, pos) => paints[i].rank === pos + 1 && paints[i].of === 5), `ranking en me.paint: ${paints.map((x) => x.rank)}`);
+  check(race.finished === 5 && race.podium.map((e) => e.id).join() === [0, 2, 3].map((i) => ids[i]).join(), 'el podio son los 3 mejores puntajes');
+  check(race.podium.every((e, i) => i === 0 || race.podium[i - 1].score <= e.score), 'el podio está ordenado por puntaje');
+  check(race.podium.every((e) => e.mistakes === 0), 'el podio informa los errores');
+  const msAll = paints.map((x) => x.ms);
+  check(race.parallelMs === Math.max(...msAll) && race.slowest.ms === race.parallelMs && race.slowest.name === 'Eze', 'parallelMs = el ms del último; slowest = Eze');
+  check(Math.abs(race.soloMs - msAll.reduce((a, b) => a + b, 0)) <= 1, 'soloMs = suma de ms (todos enviaron, 6 puntos cada uno)');
+  check(race.soloMs > race.parallelMs, 'una sola persona tarda más que el grupo');
+  check(race.parallelMs > 2300 && race.parallelMs < 4500, `parallelMs esperable (${race.parallelMs})`);
+  check(phones.every((p) => p.state.race.parallelMs === race.parallelMs && p.state.race.soloMs === race.soloMs), 'el celular ve parallelMs y soloMs');
+  checkDriverShape(driver.state, 'carrera');
+  phones.forEach((p) => checkPhoneShape(p.state, 'carrera'));
+
+  step('juego: ruleta (precondiciones)');
+  driver.socket.emit('spin'); // not in fail
+  await sleep(200);
+  check(driver.state.spin === null, 'spin fuera de la fase fail se ignora');
+  driver.socket.emit('phase', { phase: 'fail' });
+  await waitFor(driver, (s) => s.phase === 'fail' && s.round === 1, 'fase fail');
+  phones.forEach((p) => { p.tasks.length = 0; });
+  driver.socket.emit('round');
+  await waitFor(driver, (s) => s.busy, 'vuelta en curso');
+  driver.socket.emit('spin');
+  await sleep(200);
+  check(driver.state.spin === null, 'spin con una vuelta en curso se ignora');
+  await waitFor(driver, (s) => !s.busy, 'fin de la vuelta', 4000);
+
+  // Tapping a token still switches it off directly (no roulette) and counts as `fallen`.
+  // Everyone has 6 points, so the tie goes to the lowest id (ids follow connection order, not name order).
+  const clickHeirId = Math.min(...[0, 1, 2, 3].map((i) => ids[i]));
+  driver.socket.emit('kill', { id: ids[4] });
+  const click = await waitFor(driver, (s) => s.lastFail, 'apagado por toque');
+  check(click.lastFail.victimId === ids[4] && click.lastFail.heirId === clickHeirId && click.lastFail.heir === names[ids.indexOf(clickHeirId)]
+    && click.lastFail.victim === 'Eze' && click.spin === null, 'apagado directo: victimId/heirId, sin ruleta');
+  const clickN = click.lastFail.n;
+  check(Number.isInteger(clickN), 'lastFail.n es un entero');
+
+  step('juego: ruleta de punta a punta');
+  const loadBefore = new Map(driver.state.phones.map((p) => [p.id, p.points]));
+  const t1 = Date.now();
+  driver.socket.emit('spin');
+  const sp = await waitFor(driver, (s) => s.spin, 'spin visible para el proyector');
+  const spinN = sp.spin.n;
+  const candidates = [0, 1, 2, 3].map((i) => ids[i]).sort((a, b) => a - b);
+  check(sp.spin.candidates.join() === candidates.join(), `candidatos = prendidas y conectadas (${sp.spin.candidates})`);
+  check(candidates.includes(sp.spin.victim) && sp.spin.ms === SPIN_MS && spinN > clickN, 'spin: víctima entre los candidatos, ms = SPIN_MS, n nuevo');
+  check(sp.lastFail.n === clickN, 'mientras gira, lastFail sigue siendo el anterior');
+  for (const i of [0, 1, 2, 3]) {
+    const s = await waitFor(phones[i], (st) => st.spin, `spin visible para el candidato ${names[i]}`);
+    check(s.spin.n === spinN && s.spin.ms === SPIN_MS, 'spin del celular = {n, ms}');
+  }
+  await sleep(100);
+  check(phones[4].state.spin === null, 'la compu apagada no es candidata: no ve el spin');
+  // Everything below must be ignored while the roulette turns.
+  phones.forEach((p) => { p.tasks.length = 0; });
+  driver.socket.emit('kill', { id: ids[1] });
+  driver.socket.emit('kill', {});
+  driver.socket.emit('round');
+  driver.socket.emit('spin');
+  driver.socket.emit('revive');
+  driver.socket.emit('run', { on: true });
+  await sleep(250);
+  check(driver.state.spin && driver.state.spin.n === spinN && driver.state.spin.victim === sp.spin.victim, 'otro spin no cambia la ruleta en curso');
+  check(driver.state.phones.filter((p) => p.status === 'off').length === 1 && driver.state.lastFail.n === clickN, 'kill y revive se ignoran mientras gira');
+  check(!driver.state.busy && !driver.state.running && phones.every((p) => p.tasks.length === 0), 'round y run { on: true } se ignoran mientras gira');
+  const done = await waitFor(driver, (s) => s.spin === null && s.lastFail && s.lastFail.n === spinN, 'fin de la ruleta', 4000);
+  check(Date.now() - t1 >= SPIN_MS - 50, 'la ruleta dura SPIN_MS');
+  const lf = done.lastFail;
+  check(lf.victimId === sp.spin.victim, 'la víctima es la que anunció el spin');
+  const expHeir = candidates.filter((id) => id !== lf.victimId)
+    .sort((a, b) => (loadBefore.get(a) - loadBefore.get(b)) || (a - b))[0];
+  check(lf.heirId === expHeir && lf.points === loadBefore.get(lf.victimId), `heredero = el de menos puntos (${lf.heir}), points = ${lf.points}`);
+  check(lf.victim === done.phones.find((p) => p.id === lf.victimId).name && lf.heir === done.phones.find((p) => p.id === lf.heirId).name, 'lastFail: nombres coinciden con los ids');
+  check(done.phones.find((p) => p.id === lf.victimId).status === 'off' && done.phones.filter((p) => p.status === 'off').length === 2, 'al terminar la víctima queda off');
+  check(done.points.length === 30 && done.points.filter((pt) => pt.home === lf.victimId).every((pt) => pt.owner === lf.heirId), 'los puntos de la víctima pasan al heredero');
+  checkDriverShape(done, 'ruleta');
+  const roles = {};
+  for (let i = 0; i < 5; i++) {
+    const s = await waitFor(phones[i], (st) => st.spin === null && st.lastFail && st.lastFail.n === spinN, `lastFail.n nuevo en ${names[i]}`);
+    roles[i] = s.lastFail.me;
+    checkPhoneShape(s, 'ruleta');
+    check(s.lastFail.victim === lf.victim && s.lastFail.heir === lf.heir && s.lastFail.points === lf.points, 'lastFail del celular: victim, heir, points');
+    const want = ids[i] === lf.victimId ? 'victim' : ids[i] === lf.heirId ? 'heir' : 'safe';
+    check(s.lastFail.me === want, `lastFail.me de ${names[i]} = ${want}, vino ${s.lastFail.me}`);
+  }
+  check(roles[4] === 'safe', 'quien ya estaba apagada y no fue candidata ve safe');
+  await sleep(200);
+  check(phones.every((p) => p.state.spin === null), 'terminada la ruleta nadie ve spin');
+  const idx = (id) => ids.indexOf(id);
+  check(phones[idx(lf.heirId)].inherits.length >= 1 && phones[idx(lf.heirId)].inherits.some((x) => x.count === lf.points), 'el heredero de la ruleta recibe inherit');
+
+  step('juego: llega una compu tarde y medallas en end');
+  const late = connect(url, { role: 'worker', token: 'glate', name: 'Tarde' });
+  await waitFor(late, (s) => s.me && s.points.length === 6, 'celular tardío');
+  driver.socket.emit('phase', { phase: 'end' });
+  await waitFor(driver, (s) => s.phase === 'end', 'fase end');
+  const rankOf = [1, 5, 2, 3, 4]; // Ana, Bruno, Caro, Dani, Eze
+  const heirs = new Set([clickHeirId, lf.heirId]); // heir of Eze's points, and heir of the roulette victim
+  const fallen = new Set([ids[4], lf.victimId]);
+  for (let i = 0; i < 5; i++) {
+    const want = [];
+    if (rankOf[i] === 1) want.push('fastest');
+    if (rankOf[i] === 2 || rankOf[i] === 3) want.push('podium');
+    if (paints[i].mistakes === 0) want.push('perfect');
+    if (heirs.has(ids[i])) want.push('heir');
+    if (candidates.includes(ids[i]) && ids[i] !== lf.victimId) want.push('survivor');
+    if (fallen.has(ids[i])) want.push('fallen');
+    const s = await waitFor(phones[i], (st) => st.phase === 'end', 'end en el celular');
+    check(medalsOf(phones[i]) === want.join(), `medallas de ${names[i]}: ${want.join()}, vino ${medalsOf(phones[i])}`);
+    checkPhoneShape(s, 'end');
+  }
+  check(medalsOf(phones[0]).startsWith('fastest,perfect'), 'Ana: fastest y perfect (en ese orden)');
+  check(late.state.me.paint === null && medalsOf(late) === 'cluster', `quien llegó tarde y no hizo nada tiene solo "cluster" (${medalsOf(late)})`);
+  check(phones.every((p) => !p.state.me.medals.includes('cluster')), 'cluster solo cuando no hay otra medalla');
+
+  step('juego: la ruleta se cancela al cambiar de fase y con reset');
+  driver.socket.emit('phase', { phase: 'fail' });
+  await waitFor(driver, (s) => s.phase === 'fail', 'vuelta a fail');
+  const offBefore = driver.state.phones.filter((p) => p.status === 'off').length;
+  const nBefore = driver.state.lastFail.n;
+  driver.socket.emit('spin');
+  await waitFor(driver, (s) => s.spin, 'segunda ruleta');
+  driver.socket.emit('phase', { phase: 'combine' });
+  await waitFor(driver, (s) => s.phase === 'combine' && s.spin === null, 'ruleta cancelada al cambiar de fase');
+  await sleep(SPIN_MS + 300);
+  check(driver.state.phones.filter((p) => p.status === 'off').length === offBefore && driver.state.lastFail.n === nBefore, 'la ruleta cancelada no apaga a nadie');
+  check(phones.every((p) => p.state.spin === null && p.state.lastFail.n === nBefore), 'los celulares no ven la ruleta cancelada');
+  driver.socket.emit('phase', { phase: 'fail' });
+  await waitFor(driver, (s) => s.phase === 'fail', 'otra vez fail');
+  driver.socket.emit('spin');
+  await waitFor(driver, (s) => s.spin, 'tercera ruleta');
+  driver.socket.emit('reset');
+  const rst = await waitFor(driver, (s) => s.phase === 'lobby', 'reset');
+  check(rst.spin === null, 'reset cancela la ruleta');
+  await sleep(SPIN_MS + 300);
+  check(driver.state.phase === 'lobby' && driver.state.lastFail === null && driver.socket.connected, 'tras el reset la ruleta no hace nada');
+
+  step('juego: reset limpia todo');
+  const r = driver.state.race;
+  check(r.finished === 0 && r.podium.length === 0 && r.parallelMs === null && r.soloMs === null && r.slowest === null, 'reset: race vacío');
+  check(driver.state.lastFail === null && driver.state.spin === null, 'reset: sin lastFail ni spin');
+  for (const p of [...phones, late]) {
+    const s = await waitFor(p, (st) => st.phase === 'lobby' && st.lastFail === null, 'celular en lobby');
+    check(s.me.paint === null && medalsOf(p) === 'cluster' && s.spin === null && s.race.parallelMs === null && s.race.soloMs === null,
+      `reset: ${s.me.name} sin paint, sin medallas (salvo cluster), sin spin ni race`);
+  }
+  driver.socket.emit('phase', { phase: 'paint' });
+  await waitFor(driver, (s) => s.phase === 'paint', 'nueva clase');
+  check(driver.state.race.finished === 0 && phones.every((p) => p.state.me.paint === null), 'la clase nueva arranca con la carrera en cero');
+}
+
 // ---------------------------------------------------------------- main
 
 async function main() {
@@ -443,7 +679,26 @@ async function main() {
   }
   check(!crashed, 'el servidor no se cayó');
   clients.forEach((c) => c.socket.close());
+  clients.length = 0;
   server.kill();
+
+  console.log('Capa de juego');
+  step('desempate del ranking');
+  tieBreak();
+  // A fresh server so the game starts from an empty room.
+  const port2 = await freePort();
+  const server2 = await startServer(port2);
+  server2.removeAllListeners('exit');
+  let crashed2 = false;
+  server2.on('exit', (code) => { if (code) { crashed2 = true; failures.push(`el servidor del juego se cayó (código ${code})`); } });
+  try {
+    await game(port2);
+  } catch (err) {
+    failures.push(err.message);
+  }
+  check(!crashed2, 'el servidor del juego no se cayó');
+  clients.forEach((c) => c.socket.close());
+  server2.kill();
 }
 
 main().catch((err) => { failures.push(err.stack || err.message); }).then(() => {

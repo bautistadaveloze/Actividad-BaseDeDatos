@@ -41,6 +41,22 @@
   let submitted = false;
   let hintTimer = null;
 
+  // Game layer
+  let mistakes = 0;        // wrong taps while painting; sent with paint:submit
+  let clockStart = null;   // when this phone started painting (ms epoch)
+  let prevConverged = null;
+  let celebrating = false;
+  let seenFailN = null;    // last roulette result already reacted to
+  const MEDALS = {
+    fastest: ['trophy', 'La compu más rápida'],
+    podium: ['medal', 'En el podio'],
+    perfect: ['target', 'Cero errores'],
+    heir: ['heart-handshake', 'Hiciste trabajo de otra compu'],
+    survivor: ['shield-check', 'Sobreviviste a la ruleta'],
+    fallen: ['power-off', 'Te apagaron y no se perdió nada'],
+    cluster: ['users', 'Parte del clúster'],
+  };
+
   // Automatic task: { round, ms, status: 'working' | 'done' }
   let taskUi = null;
   let taskTimer = null;
@@ -76,9 +92,7 @@
     socket.on('connect_error', () => setConn(false));
     socket.on('state', (s) => { state = s; onState(); });
     socket.on('task', onTask);
-    socket.on('inherit', ({ from, count, total }) => {
-      banner('ok', 'layers', `Heredaste ${plural(count, 'punto', 'puntos')} de ${esc(from)}. Ahora tenés ${total}.`, 7000);
-    });
+    // The inherit event is covered by lastFail (same moment, same data).
     socket.on('join:error', (msg) => {
       banner('bad', 'circle-alert', esc(msg), 8000);
       joined = false;
@@ -119,6 +133,29 @@
 
   const vibrate = (pattern) => { if (navigator.vibrate) try { navigator.vibrate(pattern); } catch { /* ignore */ } };
 
+  // ------------------------------------------------------------ times (es-AR)
+
+  const comma = (n) => n.toFixed(1).replace('.', ',');
+  function fmtMs(ms) {
+    if (ms < 60000) return `${comma(ms / 1000)} s`;
+    const s = Math.round(ms / 1000);
+    return `${Math.floor(s / 60)} min ${pad(s % 60)} s`;
+  }
+  function fmtSolo(ms) {
+    if (ms < 90000) return `unos ${Math.round(ms / 1000)} segundos`;
+    return `unos ${Math.max(2, Math.round(ms / 60000))} minutos`;
+  }
+
+  // Stopwatch: only its text changes, never the DOM around it.
+  function tickClock() {
+    const el = document.getElementById('clock');
+    if (!el || clockStart === null) return;
+    const s = Math.max(0, Math.floor((Date.now() - clockStart) / 1000));
+    const text = s < 60 ? `${s} s` : `${Math.floor(s / 60)}:${pad(s % 60)}`;
+    if (el.textContent !== text) el.textContent = text;
+  }
+  setInterval(tickClock, 250);
+
   // ------------------------------------------------------------ automatic task
 
   function onTask({ round, centers }) {
@@ -151,10 +188,51 @@
       painted = Number.isFinite(saved) ? Math.max(0, Math.min(saved, state.own)) : 0;
       lastPainted = -1;
       submitted = false;
+      const m = Number(safe.get('sessionStorage', `mistakes:${paintKey}`));
+      mistakes = Number.isInteger(m) && m >= 0 ? m : 0;
+      const t = Number(safe.get('sessionStorage', `start:${paintKey}`));
+      clockStart = t > 0 ? t : null;
     }
+    if (clockStart === null && state.phase === 'paint' && state.own > 0 && !me.sent) {
+      clockStart = Date.now();
+      safe.set('sessionStorage', `start:${paintKey}`, String(clockStart));
+    }
+    reactToGame();
     if (me.off) { clearTimeout(taskTimer); taskUi = null; $('#banners').replaceChildren(); }
     if (!me.sent && state.phase !== 'paint') submitted = false;
     render();
+  }
+
+  // Roulette result and party: each one fires once per change, never on reconnect.
+  function reactToGame() {
+    const { lastFail, converged, me } = state;
+
+    if (prevConverged === false && converged) {
+      celebrating = true;
+      vibrate([80, 60, 80, 60, 200]);
+    }
+    if (!converged) celebrating = false;
+    prevConverged = converged;
+
+    const n = lastFail ? lastFail.n : 0;
+    if (seenFailN === null) {
+      const saved = safe.get('sessionStorage', 'fail-n');
+      seenFailN = saved === null ? n : Number(saved);
+      if (saved === null) safe.set('sessionStorage', 'fail-n', String(n));
+    }
+    if (n === seenFailN) return;
+    seenFailN = n;
+    safe.set('sessionStorage', 'fail-n', String(n));
+    if (!lastFail) return;
+    $('#banners').replaceChildren();
+    if (lastFail.me === 'victim') {
+      vibrate([200, 80, 200]);
+    } else if (lastFail.me === 'heir') {
+      vibrate([60, 40, 60]);
+      banner('ok', 'layers', `Te tocó trabajar: heredaste ${plural(lastFail.points, 'punto', 'puntos')} de ${esc(lastFail.victim)}. Ahora tenés ${state.points.length}.`, 8000);
+    } else if (!me.off) {
+      banner('ok', 'shield-check', `¡Te salvaste! Se apagó la compu de ${esc(lastFail.victim)}.`, 6000);
+    }
   }
 
   function currentView() {
@@ -163,6 +241,7 @@
     const { me, phase } = state;
     if (phase === 'end') return 'end';
     if (me.off) return 'off';
+    if (phase === 'fail' && state.spin) return 'spin';
     if (phase === 'lobby') return 'lobby';
     if (phase === 'paint') {
       if (state.own === 0) return 'standby';
@@ -176,6 +255,8 @@
   function render() {
     const view = currentView();
     const changed = view !== viewKey;
+    // A roulette notice belongs to the "se apaga una" step; don't carry it into the closing screen.
+    if (changed && view === 'end') $('#banners').replaceChildren();
     viewKey = view;
     document.body.dataset.view = view;
     const html = VIEWS[view]();
@@ -190,6 +271,7 @@
       screen.style.animation = '';
       window.scrollTo({ top: 0 });
     }
+    tickClock();
   }
 
   // ------------------------------------------------------------ drawing
@@ -225,6 +307,21 @@
   const correctOf = (p) => nearest(p, state.centers);
 
   // ------------------------------------------------------------ views
+
+  function raceBlock() {
+    const pa = state.me.paint;
+    if (!pa) return '';
+    const pen = Math.round((pa.score - pa.ms) / 1000);
+    const errs = pa.mistakes > 0 ? ` · ${plural(pa.mistakes, 'error', 'errores')}, +${pen} s` : '';
+    const rank = pa.rank
+      ? `<p class="race-rank">${pa.of > 1 ? `Puesto <b>${pa.rank}</b> de los ${pa.of} que terminaron` : 'Terminaste antes que nadie'}</p>`
+      : '';
+    const podium = pa.rank && pa.rank <= 3
+      ? `<div class="podium">${icon('trophy')}<span>¡Estás en el podio!</span></div>`
+      : '';
+    return `<div class="race">
+      <p class="race-time">Tardaste <b>${fmtMs(pa.ms)}</b>${errs}</p>${rank}${podium}</div>`;
+  }
 
   const VIEWS = {
     join() {
@@ -272,6 +369,7 @@
         <div class="head">
           <h1>Punto ${painted + 1} de ${n}</h1>
           <div class="pdots" aria-hidden="true">${dots}</div>
+          <span class="clock" id="clock" role="timer" aria-live="off">0 s</span>
         </div>
         <p class="ask">¿Qué centro le queda más cerca al punto que titila?</p>
         ${plotSvg({ pts, labelOf: (i, p) => (i < painted ? correctOf(p) : -1), current: painted, pop: lastPainted })}
@@ -290,7 +388,10 @@
       pts.forEach((p) => { counts[correctOf(p)] += 1; });
       return `
         <div class="stack">
-          <h1>Pintaste tus ${pts.length} puntos</h1>
+          <div class="head">
+            <h1>Pintaste tus ${pts.length} puntos</h1>
+            <span class="clock" id="clock" role="timer" aria-live="off">0 s</span>
+          </div>
           <div class="counts">${counts.map((c, j) => `<span class="count">${swatch(j)}<b>${NAMES[j]}</b><span class="mono">${c}</span></span>`).join('')}</div>
           <p class="lead">Esto es lo único que le vas a mandar al coordinador: un resumen, no tus puntos.</p>
         </div>
@@ -308,14 +409,20 @@
           <h1>Enviado</h1>
           <p class="lead">Mandaste solo un resumen chiquito. Mirá el proyector.</p>
         </div>
+        ${raceBlock()}
         ${plotSvg({ pts, labelOf: (i, p) => correctOf(p) })}`;
     },
 
     combine() {
+      const { parallelMs, soloMs } = state.race || {};
+      const compare = parallelMs != null && soloMs != null
+        ? `<p class="compare">${icon('timer')}<span>Entre todos tardaron <b>${fmtMs(parallelMs)}</b>. Una sola persona habría tardado <b>${fmtSolo(soloMs)}</b>.</span></p>`
+        : '';
       return `
         <div class="result">
           <h1>El coordinador juntó todo</h1>
           <p class="lead">Movió los centros. Mirá el proyector.</p>
+          ${compare}
           ${state.me.sent ? '' : `<p class="note warn">${icon('circle-alert')}<span>No llegaste a enviar: tu compu terminó sola tu parte.</span></p>`}
         </div>
         ${stateLabelPlot()}`;
@@ -324,7 +431,7 @@
     run() {
       let head;
       if (state.converged) {
-        head = `<div class="result"><div class="result-icon ok">${icon('check')}</div><h1>Terminamos</h1><p class="lead">Los centros ya no se mueven. El modelo está entrenado.</p></div>`;
+        head = `<div class="result${celebrating ? ' party' : ''}"><div class="result-icon ok">${icon(celebrating ? 'party-popper' : 'check')}</div><h1>Terminamos</h1><p class="lead">Los centros ya no se mueven. El modelo está entrenado.</p></div>`;
       } else if (taskUi && taskUi.status === 'working') {
         head = `<div class="result"><h1>Vuelta ${taskUi.round} · Pintando…</h1>
           <div class="bar-work" role="progressbar" aria-label="Pintando"><i style="animation-duration:${taskUi.ms}ms"></i></div></div>`;
@@ -337,22 +444,41 @@
     },
 
     off() {
+      const lf = state.lastFail;
+      const hit = lf && lf.me === 'victim';
       return `
         <div class="off">
           <div class="off-icon">${icon('power-off')}</div>
-          <h1>Tu compu se apagó</h1>
-          <p class="lead">Es de mentira. No se perdió nada: tus puntos ahora los pinta otra compu.</p>
+          <h1>${hit ? '¡Te tocó!' : 'Tu compu se apagó'}</h1>
+          <p class="lead">${hit
+            ? `Tu compu se apagó. Es de mentira: tus puntos ahora los pinta ${esc(lf.heir)}. No se perdió nada.`
+            : 'Es de mentira. No se perdió nada: tus puntos ahora los pinta otra compu.'}</p>
+        </div>`;
+    },
+
+    spin() {
+      return `
+        <div class="spin">
+          <h1>¿Se apaga tu compu?</h1>
+          <p class="lead">La ruleta está girando…</p>
+          <div class="spinner" aria-hidden="true">${swatch(0)}${swatch(1)}${swatch(2)}</div>
         </div>`;
     },
 
     end() {
       const { me, own } = state;
+      const medals = (me.medals || []).filter((k) => MEDALS[k]);
+      const cards = medals.map((k) => `<div class="medal medal-${k}"><span class="medal-icon">${icon(MEDALS[k][0])}</span><span class="medal-text">${MEDALS[k][1]}</span></div>`).join('');
+      const racing = medals.includes('fastest') || medals.includes('podium');
+      const rankLine = racing && me.paint && me.paint.rank ? `<p class="rank-line">Puesto ${me.paint.rank} en la carrera</p>` : '';
       return `
         <div class="result">
           <div class="result-icon ok">${icon('sparkles')}</div>
           <h1>Gracias por ser parte del clúster</h1>
           <p class="lead">Fuiste la compu <span class="mono">${pad(me.id)}</span> · pintaste ${plural(own, 'punto', 'puntos')} · hiciste ${plural(me.rounds, 'vuelta', 'vueltas')}.</p>
-        </div>`;
+          ${rankLine}
+        </div>
+        <div class="medals">${cards}</div>`;
     },
   };
 
@@ -400,13 +526,15 @@
         void pick.offsetWidth;
         pick.classList.add('shake');
         pick.addEventListener('animationend', () => pick.classList.remove('shake'), { once: true });
-        showHint('Casi. Fijate otra vez: hay un centro más cerca.');
+        mistakes += 1;
+        safe.set('sessionStorage', `mistakes:${state.paintKey}`, String(mistakes));
+        showHint('Casi. Fijate otra vez: hay un centro más cerca. +3 s');
       }
       return;
     }
     if (e.target.closest('[data-send]') && socket && !submitted) {
       submitted = true;
-      socket.emit('paint:submit');
+      socket.emit('paint:submit', { mistakes });
       render();
     }
   });

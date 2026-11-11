@@ -65,6 +65,22 @@
   const pad = (n) => String(n).padStart(2, '0');
   const nf = new Intl.NumberFormat('es-AR');
   const plural = (n, one, many) => `${nf.format(n)} ${n === 1 ? one : many}`;
+  const nf1 = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Times (ACTIVIDAD.md 9.1): under 60 s with one decimal, "14,2 s".
+  function fmtTime(ms) {
+    const sec = ms / 1000;
+    if (sec < 59.95) return `${nf1.format(sec)} s`;
+    const total = Math.round(sec);
+    return `${Math.floor(total / 60)} min ${total % 60} s`;
+  }
+  // The "one person alone" time is an estimate, so it is rounded and says "unos".
+  function fmtSolo(ms) {
+    const sec = ms / 1000;
+    if (sec < 90) return `unos ${Math.max(5, Math.round(sec / 5) * 5)} segundos`;
+    return `unos ${Math.max(2, Math.round(sec / 60))} minutos`;
+  }
 
   const embedded = document.documentElement.dataset.embed === 'true';
   let socket = null;
@@ -131,8 +147,10 @@
   }
 
   // In `fail` a round is allowed after convergence: it shows the work goes on without the lost phone.
-  const canRound = (s) => !s.busy && (s.phase === 'fail' || (s.phase === 'auto' && !s.converged));
-  const canKill = (s) => s.phase === 'fail' && liveCount(s) > 1;
+  const canRound = (s) => !s.busy && !s.spin && (s.phase === 'fail' || (s.phase === 'auto' && !s.converged));
+  // While the roulette spins the server ignores spin, kill, revive, round and run on.
+  const canKill = (s) => s.phase === 'fail' && !s.spin && liveCount(s) > 1;
+  const canSpin = (s) => s.phase === 'fail' && !s.spin && !s.busy && liveCount(s) > 1;
 
   // ------------------------------------------------------------ chrome
 
@@ -166,9 +184,9 @@
   $('#confirmYes').addEventListener('click', () => { askReset(false); send('reset'); });
   confirmBox.addEventListener('click', (e) => { if (e.target === confirmBox) askReset(false); });
 
-  const toggleRun = () => { if (state && (state.phase === 'auto' || state.phase === 'fail') && (state.running || !state.converged)) send('run', { on: !state.running }); };
+  const toggleRun = () => { if (state && (state.phase === 'auto' || state.phase === 'fail') && (state.running || (!state.converged && !state.spin))) send('run', { on: !state.running }); };
   const doRound = () => { if (state && canRound(state)) send('round'); };
-  const doKill = () => { if (state && canKill(state)) send('kill', {}); };
+  const doSpin = () => { if (state && canSpin(state)) send('spin'); };
 
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -180,7 +198,7 @@
     else if (e.key === 'ArrowLeft') go(-1);
     else if (e.key === ' ' || k === 'r') { e.preventDefault(); doRound(); }
     else if (k === 's') toggleRun();
-    else if (k === 'k') doKill();
+    else if (k === 'k') doSpin();
     else if (k === 'q') toggleQr();
     else if (k === 't') toggleTheme();
     else if (k === 'f') toggleFullscreen();
@@ -324,6 +342,15 @@
   const grid = $('#compusGrid');
   const tiles = new Map(); // id -> { el, sig }
 
+  // Roulette effects live in classes that a status change must not wipe out.
+  const fx = { cands: new Set(), lit: null, blink: null };
+  function applyTileFx(t) {
+    t.el.classList.toggle('is-cand', fx.cands.has(t.id));
+    t.el.classList.toggle('is-lit', fx.lit === t.id);
+    t.el.classList.toggle('is-blink', fx.blink === t.id);
+  }
+  const applyAllFx = () => tiles.forEach(applyTileFx);
+
   function renderCompus(s) {
     $('#compusCount').textContent = String(connectedCount(s));
     const n = s.phones.length;
@@ -340,9 +367,9 @@
         el.innerHTML = `<span class="t-ico"></span><span class="t-num mono"></span><span class="t-name"></span><span class="t-inh mono"></span>`;
         el.querySelector('.t-num').textContent = pad(p.id);
         el.addEventListener('click', () => {
-          if (state && state.phase === 'fail' && el.dataset.status !== 'off' && el.dataset.status !== 'offline') send('kill', { id: p.id });
+          if (state && canKill(state) && el.dataset.status !== 'off' && el.dataset.status !== 'offline') send('kill', { id: p.id });
         });
-        t = { el, sig: '' };
+        t = { el, sig: '', id: p.id };
         tiles.set(p.id, t);
       }
       const sig = `${p.name}|${p.status}|${p.inherited}|${clickable}|${canKill(s)}`;
@@ -361,7 +388,9 @@
         el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${clickable && !el.disabled ? '. Tocar para apagar' : ''}`);
       }
       if (grid.children[idx] !== t.el) grid.insertBefore(t.el, grid.children[idx] || null);
+      applyTileFx(t);
     });
+    grid.classList.toggle('is-spinning', !!(s.spin && s.phase === 'fail'));
     for (const [id, t] of tiles) {
       if (!seen.has(id)) { t.el.remove(); tiles.delete(id); }
     }
@@ -424,7 +453,7 @@
 
     // fail: what happened to the last phone
     const lf = s.phase === 'fail' && s.lastFail;
-    $('#failCard').hidden = !lf;
+    $('#failCard').hidden = !lf || !!s.spin;
     if (lf) {
       $('#failText').innerHTML = `Se apagó la compu de <strong>${esc(lf.victim)}</strong>. `
         + `${lf.points === 1 ? 'Su punto ahora lo pinta' : `Sus ${nf.format(lf.points)} puntos ahora los pinta`} <strong>${esc(lf.heir)}</strong>. `
@@ -434,6 +463,8 @@
     // combine: the highlighted fact, next to the drawing
     const stat = $('#stat');
     stat.hidden = s.phase !== 'combine';
+    renderVersus(s);
+    renderRace(s);
     if (!stat.hidden) {
       stat.innerHTML = `Por la red viajaron <strong>${plural(s.stats.summaries, 'resumen', 'resúmenes')}</strong>, no <strong>${plural(s.stats.points, 'punto', 'puntos')}</strong>.`;
     }
@@ -442,7 +473,175 @@
 
     if (s.phase === 'end') {
       $('#endNums').textContent = `${plural(s.stats.phones, 'compu', 'compus')} · ${plural(s.stats.points, 'punto', 'puntos')} · ${plural(s.round, 'vuelta', 'vueltas')}`;
+      const pod = (s.race && s.race.podium) || [];
+      const endPod = $('#endPodium');
+      endPod.hidden = !pod.length;
+      if (pod.length) {
+        endPod.innerHTML = icon('trophy') + `<span>Podio de pintura: ${pod.map((p, i) => `${i + 1}. ${esc(p.name)} ${fmtTime(p.score)}`).join(' · ')}</span>`;
+      }
     }
+  }
+
+  // ------------------------------------------------------------ race (paint) and versus (combine)
+
+  const podiumEl = $('#podium');
+  let podiumSig = null;
+  let podiumIds = null; // null until the first state: a reload must not animate the whole podium
+
+  function renderRace(s) {
+    const r = s.race || {};
+    const pod = r.podium || [];
+    const pen = (r.penaltyMs || 3000) / 1000;
+    $('#raceCard').hidden = s.phase !== 'paint';
+    $('#raceNote').textContent = `Cada error suma ${nf.format(pen)} s.`;
+    const sig = pod.map((p) => `${p.id}:${p.name}:${p.ms}:${p.mistakes}`).join('|');
+    if (sig !== podiumSig) {
+      podiumSig = sig;
+      const fresh = new Set(podiumIds ? pod.filter((p) => !podiumIds.has(p.id)).map((p) => p.id) : []);
+      if (!pod.length) {
+        podiumEl.innerHTML = '<li class="pod-empty">Todavía nadie terminó.</li>';
+      } else {
+        podiumEl.innerHTML = pod.map((p, i) => {
+          const miss = p.mistakes > 0
+            ? `<span class="pod-pen">+${nf.format(p.mistakes * pen)} s · ${plural(p.mistakes, 'error', 'errores')}</span>` : '';
+          return `<li class="pod-row rank-${i + 1}${fresh.has(p.id) && !reducedMotion() ? ' is-new' : ''}">`
+            + `<span class="pod-rank">${i + 1}</span><span class="pod-name">${esc(p.name)}</span>`
+            + `<span class="pod-time">${fmtTime(p.ms)}</span>${miss}</li>`;
+        }).join('');
+      }
+    }
+    podiumIds = new Set(pod.map((p) => p.id));
+  }
+
+  const versus = $('#versus');
+  let versusKey = '';
+
+  function renderVersus(s) {
+    const r = s.race || {};
+    const show = s.phase === 'combine' && r.parallelMs != null && r.soloMs != null;
+    versus.hidden = !show;
+    if (!show) { versusKey = ''; return; }
+    const key = `${r.parallelMs}|${r.soloMs}`;
+    if (key === versusKey) return;
+    versusKey = key;
+    $('#vsTeamVal').textContent = fmtTime(r.parallelMs);
+    $('#vsSoloVal').textContent = fmtSolo(r.soloMs);
+    $('#vsNote').textContent = r.slowest ? `El grupo terminó cuando terminó el último: ${r.slowest.name}.` : '';
+    // Same scale for both bars. The short one lands first, the long one keeps growing.
+    const scale = Math.max(r.parallelMs, r.soloMs, 1);
+    const team = $('#vsTeamBar');
+    const solo = $('#vsSoloBar');
+    const bars = [team, solo];
+    bars.forEach((b) => { b.classList.add('no-anim'); b.style.width = '0%'; });
+    void versus.offsetWidth;
+    bars.forEach((b) => b.classList.remove('no-anim'));
+    team.style.width = `${Math.max(1.5, (100 * r.parallelMs) / scale)}%`;
+    solo.style.width = `${Math.max(1.5, (100 * r.soloMs) / scale)}%`;
+  }
+
+  // ------------------------------------------------------------ roulette
+
+  const spinBanner = $('#spinBanner');
+  let spinHandled = 0;   // last spin.n whose animation we started
+  let spinLive = null;   // { victimId, timers } while a spin is on screen
+  let firstState = true;
+  let blinkTimer = 0;
+
+  function setLit(id) { fx.lit = id; applyAllFx(); }
+
+  function startSpin(sp, animate) {
+    stopSpin();
+    spinLive = { victim: sp.victim, timers: [] };
+    fx.cands = new Set(sp.candidates);
+    fx.lit = null;
+    clearTimeout(blinkTimer);
+    fx.blink = null;
+    applyAllFx();
+    const m = sp.candidates.length;
+    if (!animate || reducedMotion() || m < 2) return;
+    // Intervals grow geometrically (fast first, slower and slower) and are
+    // rescaled so the last hop lands exactly at sp.ms, on the victim.
+    const ratio = 1.08;
+    const steps = Math.max(6, Math.ceil(Math.log(1 + (sp.ms * (ratio - 1)) / 60) / Math.log(ratio)));
+    let raw = 0;
+    const cum = [];
+    for (let k = 0; k < steps; k++) { raw += Math.pow(ratio, k); cum.push(raw); }
+    const vIdx = Math.max(0, sp.candidates.indexOf(sp.victim));
+    const t0 = performance.now();
+    cum.forEach((c, k) => {
+      const at = (c / raw) * sp.ms;
+      const id = sp.candidates[(((vIdx - (steps - 1 - k)) % m) + m) % m];
+      spinLive.timers.push(setTimeout(() => setLit(id), Math.max(0, at - (performance.now() - t0))));
+    });
+  }
+
+  function stopSpin() {
+    if (!spinLive) return;
+    spinLive.timers.forEach(clearTimeout);
+    spinLive = null;
+  }
+
+  // The server cleared `spin`: the wheel stopped. Land on the victim and blink.
+  function endSpin() {
+    if (!spinLive) return;
+    const victim = spinLive.victim;
+    stopSpin();
+    fx.cands = new Set();
+    fx.lit = null;
+    fx.blink = victim;
+    applyAllFx();
+    clearTimeout(blinkTimer);
+    blinkTimer = setTimeout(() => { fx.blink = null; applyAllFx(); }, 3600);
+  }
+
+  function renderSpin(s) {
+    const sp = s.phase === 'fail' ? s.spin : null;
+    spinBanner.hidden = !sp;
+    if (sp) {
+      if (sp.n !== spinHandled) {
+        // A reload in the middle of a wheel only shows the banner: we do not know how far it got.
+        startSpin(sp, !firstState);
+        spinHandled = sp.n;
+      }
+    } else if (spinLive) {
+      if (s.phase === 'fail') endSpin(); else stopSpin();
+    }
+    if (s.phase !== 'fail' && !sp && (fx.blink !== null || fx.cands.size)) {
+      clearTimeout(blinkTimer);
+      fx.cands = new Set(); fx.lit = null; fx.blink = null; applyAllFx();
+    }
+    firstState = false;
+  }
+
+  // ------------------------------------------------------------ party
+
+  const confetti = $('#confetti');
+  let prevConverged = null; // null until the first state: loading an already finished class does not celebrate
+  let confettiTimer = 0;
+
+  function party() {
+    if (reducedMotion()) return;
+    clearTimeout(confettiTimer);
+    confetti.style.setProperty('--fall', `${$('#stage').clientHeight + 80}px`);
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < 90; i++) {
+      const p = document.createElement('span');
+      p.className = `conf conf-s${i % 3}`;
+      p.style.setProperty('--x', `${(Math.random() * 100).toFixed(1)}%`);
+      p.style.setProperty('--sz', `${(0.8 + Math.random() * 0.9).toFixed(2)}rem`);
+      p.style.setProperty('--d', `${Math.floor(Math.random() * 700)}ms`);
+      p.style.setProperty('--t', `${1500 + Math.floor(Math.random() * 400)}ms`);
+      p.style.setProperty('--r', `${Math.floor(Math.random() * 720 - 360)}deg`);
+      p.style.setProperty('--dx', `${Math.floor(Math.random() * 120 - 60)}px`);
+      frag.appendChild(p);
+    }
+    confetti.replaceChildren(frag);
+    confettiTimer = setTimeout(() => confetti.replaceChildren(), 3000);
+  }
+
+  function renderParty(s) {
+    if (prevConverged === false && s.converged) party();
+    prevConverged = s.converged;
   }
 
   // Buttons are rebuilt only when their set or labels change, so a click is never
@@ -456,17 +655,17 @@
     const defs = [];
     if (s.phase === 'auto' || s.phase === 'fail') {
       if (s.phase === 'fail') {
-        defs.push({ id: 'kill', label: 'Apagar una al azar', ico: 'power-off', disabled: !canKill(s), run: doKill });
+        defs.push({ id: 'spin', label: 'Girar la ruleta', ico: 'dices', disabled: !canSpin(s), run: doSpin });
       }
       defs.push({ id: 'round', label: 'Otra vuelta', ico: 'rotate-ccw', disabled: !canRound(s), run: doRound });
       if (s.phase === 'auto') {
         defs.push(s.running
           ? { id: 'run', label: 'Pausar', ico: 'pause', disabled: false, run: toggleRun }
-          : { id: 'run', label: 'Seguir solo', ico: 'play', disabled: s.converged, run: toggleRun });
+          : { id: 'run', label: 'Seguir solo', ico: 'play', disabled: s.converged || !!s.spin, run: toggleRun });
       }
       if (s.phase === 'fail') {
         const anyOff = s.phones.some((p) => p.status === 'off') || !!s.lastFail;
-        defs.push({ id: 'revive', label: 'Prender todas', ico: 'power', disabled: !anyOff, run: () => send('revive') });
+        defs.push({ id: 'revive', label: 'Prender todas', ico: 'power', disabled: !anyOff || !!s.spin, run: () => send('revive') });
       }
     }
     if (s.phase === 'end') {
@@ -523,9 +722,11 @@
 
     renderStepper(s);
     renderCompus(s);
+    renderSpin(s);
     renderCard(s);
     renderExtras(s);
     renderActions(s);
     if (s.phase !== 'lobby' && s.phase !== 'end') renderPlot(s);
+    renderParty(s);
   }
 })();

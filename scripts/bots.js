@@ -3,8 +3,9 @@
 // Fake phones for rehearsing without a class:
 //   npm run bots -- 25            (25 bots against localhost:3000)
 //   URL=https://... npm run bots -- 10
-// Bots join, paint by waiting 2–9 s like a person would, and answer every
-// task after 400–900 ms with sums they really compute.
+// Bots join, paint by waiting 2–9 s like a person would (with a few mistakes,
+// as people make), and answer every task after 400–900 ms with sums they
+// really compute.
 
 const { io } = require('socket.io-client');
 const km = require('../lib/kmeans');
@@ -16,6 +17,11 @@ const NAMES = ['Ana', 'Bruno', 'Caro', 'Dani', 'Eze', 'Flor', 'Gonza', 'Hernán'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const between = (a, b) => a + Math.random() * (b - a);
+// Most people paint everything right; a few slip once or twice, very few more.
+function mistakes() {
+  const r = Math.random();
+  return r < 0.65 ? 0 : r < 0.85 ? 1 : r < 0.96 ? 2 : 3;
+}
 
 function bot(i) {
   const name = `${NAMES[i % NAMES.length]}${i >= NAMES.length ? ` ${Math.floor(i / NAMES.length) + 1}` : ''}`;
@@ -28,7 +34,7 @@ function bot(i) {
     if (s.phase !== 'paint' || s.me.sent || s.me.off || !s.points.length || paintedKey === s.paintKey) return;
     paintedKey = s.paintKey;
     await sleep(between(2000, 9000));
-    if (state.phase === 'paint' && !state.me.sent) socket.emit('paint:submit');
+    if (state.phase === 'paint' && !state.me.sent) socket.emit('paint:submit', { mistakes: mistakes() });
   });
 
   socket.on('task', async ({ round, centers }) => {

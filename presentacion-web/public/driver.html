@@ -67,9 +67,24 @@
         <section class="v-plot" data-view="plot" hidden>
           <div class="plot-box">
             <svg id="plot" viewBox="-3 -3 106 106" role="img" aria-label="Puntos de las compus y los tres centros"></svg>
+            <div class="spin-banner" id="spinBanner" hidden role="status">
+              <svg class="icon" aria-hidden="true"><use href="/icons.svg#dices"/></svg>
+              <span>Girando la ruleta…</span>
+            </div>
           </div>
           <aside class="plot-side">
             <p class="stat" id="stat" hidden></p>
+            <section class="versus" id="versus" hidden aria-label="Entre todos contra una sola persona">
+              <div class="vs-row">
+                <p class="vs-label">Entre todos · <strong id="vsTeamVal"></strong></p>
+                <div class="vs-track"><span class="vs-bar vs-team" id="vsTeamBar"></span></div>
+              </div>
+              <div class="vs-row">
+                <p class="vs-label">Una sola persona · <strong id="vsSoloVal"></strong></p>
+                <div class="vs-track"><span class="vs-bar vs-solo" id="vsSoloBar"></span></div>
+              </div>
+              <p class="vs-note" id="vsNote"></p>
+            </section>
             <ul class="legend" aria-label="Referencias del dibujo">
               <li><svg viewBox="-6 -6 12 12" class="lg-ico"><circle r="4.4" fill="var(--c0)"/></svg>Violeta</li>
               <li><svg viewBox="-6 -6 12 12" class="lg-ico"><rect x="-4.2" y="-4.2" width="8.4" height="8.4" rx="0.6" fill="var(--c1)"/></svg>Celeste</li>
@@ -77,6 +92,11 @@
               <li class="lg-unpainted"><svg viewBox="-6 -6 12 12" class="lg-ico"><circle r="3.6" fill="var(--c-none)"/></svg>Sin pintar</li>
               <li class="lg-note">Los centros son las figuras grandes con borde.</li>
             </ul>
+            <section class="race-card" id="raceCard" hidden>
+              <h2><svg class="icon" aria-hidden="true"><use href="/icons.svg#trophy"/></svg> Los más rápidos</h2>
+              <ol class="podium" id="podium"></ol>
+              <p class="race-note" id="raceNote"></p>
+            </section>
           </aside>
         </section>
 
@@ -96,6 +116,7 @@
           </table>
           <div class="end-foot">
             <p class="end-nums" id="endNums"></p>
+            <p class="end-podium" id="endPodium" hidden></p>
             <div class="code-block">
               <p>Con Spark MLlib, todo esto se escribe así:</p>
               <pre class="mono"><code>modelo = KMeans(k=3).fit(datos)</code></pre>
@@ -103,6 +124,8 @@
           </div>
         </section>
       </div>
+
+      <div class="confetti" id="confetti" aria-hidden="true"></div>
     </main>
 
     <aside class="rail">

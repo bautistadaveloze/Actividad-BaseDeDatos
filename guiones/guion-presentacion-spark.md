@@ -24,9 +24,9 @@ Cada diapositiva tiene hasta cuatro partes:
 | 03 · ML sobre datos masivos (persona 1): qué es ML y K-Means | 16–19 | 4 min |
 | 03 · ML sobre datos masivos (persona 2): entrenar con datos repartidos | 20–24 | 5 min |
 | 04 · Apache Spark y MLlib | 25–40 | 11 min |
-| 05 · Cierre y actividad | 41–44 | 2 min + 15 min de actividad |
+| 05 · Cierre y actividad | 41–44 | 2 min + unos 7 min de actividad |
 
-Total: unos 37 minutos de teoría y 15 de actividad. Si tenés que recortar, las diapositivas que se pueden pasar rápido son 34–35 (transformaciones, stages), 37 (stack) y 39 (pipeline).
+Total: unos 37 minutos de teoría y 7 de actividad. Si tenés que recortar, las diapositivas que se pueden pasar rápido son 34–35 (transformaciones, stages), 37 (stack) y 39 (pipeline).
 
 ### Consejos generales
 
@@ -126,7 +126,7 @@ El objetivo de esta parte es que el público sienta el problema antes de ver cua
 - Después la cocina: el jefe de cocina reparte los pedidos (driver), el encargado dice qué cocineros están libres (cluster manager) y los cocineros cocinan (workers). Esta analogía la podés retomar en las siguientes diapositivas.
 - Aclará que los nombres son los de Spark, pero la idea está en cualquier clúster: cuando veamos Hadoop, YARN va a ser su cluster manager.
 
-**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de driver y los celulares de executors.
+**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de coordinador (driver) y los celulares de computadoras que trabajan (workers).
 
 **Pasaje:** "Con un jefe, un encargado y cocineros, repartir el trabajo parece fácil. Pero no lo es".
 
@@ -312,14 +312,14 @@ El objetivo es entender qué es machine learning, cómo se entrena un modelo cua
 **Cómo explicarlo:**
 - Dejá que se vea el movimiento de los centros (la línea punteada es su recorrido).
 - Conectá con los roles (diapositiva 7) y con MapReduce: el driver manda los 3 centros a todos, que es chiquito; cada worker asigna sus puntos, que es el map; y el driver junta todo para mover los centros, que es el reduce.
-- Terminá con la pregunta de la diapositiva, que es la de la actividad: **¿qué tiene que mandar cada worker para que el promedio dé bien?** Dejá unos segundos de silencio.
+- Terminá con la pregunta de la diapositiva: **¿qué tiene que mandar cada worker para que el promedio dé bien?** Dejá unos segundos de silencio.
 
 ### 20 · Qué manda cada nodo al driver
 
 **Idea:** hay tres opciones. Mandar todos los puntos es correcto pero satura la red; mandar el promedio de cada grupo es liviano pero da mal; mandar la suma y la cantidad es liviano y correcto, y es lo que hacen las bibliotecas reales, como MLlib.
 
 **Cómo explicarlo:**
-- Antes de que aparezca la opción C, preguntá cuál elegirían. Muchos van a elegir B, y eso está bien: es justo el error que la actividad muestra en vivo.
+- Antes de que aparezca la opción C, preguntá cuál elegirían. Muchos van a elegir B, y eso está bien: es justo el error que explica la diapositiva siguiente. En la actividad cada celular va a mandar la opción C, un resumen, sin que nadie tenga que elegir.
 - Los tamaños: 19 MB contra 48 o 72 bytes. El punto no es el número exacto sino que A crece con los datos y B y C no.
 
 **Para entender vos:** el cálculo de A asume un millón de puntos en dos dimensiones guardados como números de 8 bytes, más algo de información extra. Lo que sacás en limpio: lo que viaja tiene que ser un resumen de tamaño fijo, no los datos.
@@ -605,20 +605,20 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 
 **Pasaje:** "Y ahora, en vez de escucharlo, lo van a vivir".
 
-### 42 · Siete fases, unos quince minutos
+### 42 · Seis pasos, unos siete minutos
 
 **Idea:** anticipar qué va a pasar en la actividad para que nadie se pierda.
 
 **Cómo explicarlo:**
-- Contá las fases rápido, sin detalle:
-  1. Se unen.
-  2. Hacen el map a mano.
-  3. Reduce con la elección A, B o C.
-  4. Modo Spark.
-  5. Fallos.
-  6. Carrera Hadoop contra Spark.
-  7. MLlib real.
-- Lo importante: **el proyector es el driver y cada celular es un executor con su partición de 8 puntos.**
+- Contá los pasos rápido, sin detalle:
+  1. Se unen con el celular.
+  2. Cada uno pinta sus 6 puntos del color del centro más cercano.
+  3. El coordinador junta los resúmenes y mueve los centros.
+  4. Los celulares repiten solos, vuelta tras vuelta.
+  5. Se apaga una compu y otra hace su parte.
+  6. Cierre: qué fue cada cosa.
+- Lo importante: **el proyector es el coordinador (driver) y cada celular es una compu (worker) con su parte de los datos, 6 puntos.**
+- En la actividad se habla con palabras comunes (compu, coordinador, resumen, vuelta). Los nombres técnicos aparecen en el proyector, al lado, para que los conectes con lo que explicaste.
 
 ### 43 · El clúster son ustedes
 
@@ -628,11 +628,11 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 - Instrucciones:
   1. Escaneen el QR o entren a la dirección.
   2. Pongan su nombre.
-  3. Esperen su partición.
-- En este momento cambiá a la pestaña del driver, que muestra el QR grande.
-- Esperá a que entre la mayoría antes de arrancar.
+  3. Esperen su parte de los datos.
+- En este momento cambiá a la pestaña del proyector (`/driver`), que muestra el QR grande.
+- Esperá a que entre la mayoría antes de arrancar. Quien entra tarde recibe puntos igual.
 
-**Para entender vos:** antes de la clase completá `[cluster.tudominio.com]` en la diapositiva con la dirección real y probá entrar desde un celular con datos móviles, no solo con el wifi de tu casa.
+**Para entender vos:** antes de la clase completá `[cluster.tudominio.com]` en la diapositiva con la dirección real y probá entrar desde un celular con datos móviles, no solo con el wifi de tu casa. Para ensayar sin gente, `npm run bots -- 25` simula 25 celulares. El paso a paso de la actividad está en `guiones/03-actividad-web.md`.
 
 ### 44 · Preguntas
 
@@ -642,19 +642,18 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 
 ---
 
-## Durante la actividad: qué remarcar en cada fase
+## Durante la actividad: qué remarcar en cada paso
 
-En cada fase conectá lo que pasa en los celulares con una diapositiva:
+En cada paso conectá lo que pasa en los celulares con una diapositiva:
 
-| Fase | Qué está pasando | Qué decir | Diapositiva |
+| Paso | Qué está pasando | Qué decir | Diapositiva |
 |---|---|---|---|
-| Unirse | Cada celular recibe 8 puntos | "Cada uno es un executor y esos 8 puntos son su partición" | 28–30 |
-| Map a mano | Cada uno asigna sus puntos al centro más cercano | "Esto es el map: cada uno solo con lo suyo, sin hablar con nadie" | 11, 19 |
-| Reduce | El driver junta lo que mandaron | Mostrá cómo la opción B mueve mal los centros | 20–21 |
-| Modo Spark | Los celulares iteran solos | "Así funciona de verdad: los datos quedan en memoria y cada vuelta es solo cálculo"; si alguno anda lento, señalá la copia especulativa | 15, 33 |
-| Fallos | Se apagan nodos | "Se perdió su partición, y Spark la rehace en otro con la receta" | 36 |
-| Hadoop vs Spark | Carrera disco contra memoria | Volvé a las barras de tiempo | 33 |
-| MLlib real | El mismo cálculo con MLlib | "Todo lo que hicimos a mano, MLlib lo hace en una línea" | 22, 38 |
+| Unirse | Cada celular entra y recibe un número | "Cada celular es una compu del clúster; el proyector es el coordinador" | 6–7 |
+| Pintar | Cada uno pinta sus 6 puntos del color del centro más cercano | "Esto es el map: cada uno solo con su parte, sin hablar con nadie" | 11, 19 |
+| Juntar | El coordinador junta los resúmenes y mueve los centros | "Viajaron resúmenes, no puntos: se mueve el cálculo, no los datos. Es la opción C" | 20, 32 |
+| Repetir | Los celulares pintan solos, vuelta tras vuelta | "Entrenar un modelo es repetir esto hasta que los centros no se mueven. Por eso conviene tener los datos en memoria" | 17, 22, 33 |
+| Se apaga una | Se apaga una compu y otra recibe sus puntos | "No se perdió nada: el coordinador le dio ese trabajo a otra" | 14, 36 |
+| Cierre | Tabla del aula contra un clúster de verdad | "Todo lo que hicimos a mano, MLlib lo hace en una línea" | 38 |
 
 ---
 
@@ -753,5 +752,6 @@ Para repasar antes de presentar. El número indica dónde aparece por primera ve
 - [ ] Completar en la diapositiva 43 `[cluster.tudominio.com]` con la dirección real.
 - [ ] Pasar la presentación entera una vez en modo Presentar, para ver las animaciones.
 - [ ] Levantar el servidor y el túnel, y probar entrar desde un celular con datos móviles.
-- [ ] Tener abierta la pestaña del driver para cambiar a ella en la diapositiva 43.
+- [ ] Tener abierta la pestaña del proyector (`/driver`) para cambiar a ella en la diapositiva 43.
+- [ ] Ensayar la actividad una vez con `npm run bots -- 25`.
 - [ ] Ensayar en voz alta la parte de arquitectura (26–32): es la más larga y la más importante.

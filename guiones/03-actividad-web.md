@@ -1,61 +1,112 @@
 # Guion 3 · Actividad web de K-Means
 
 **Duración:** 7 minutos (minutos 10–17 de la exposición)  
-**Necesitan:** computadora conectada al proyector, red local y celulares de los participantes.
+**Necesitan:** computadora conectada al proyector, red local y celulares de la clase.
+
+La actividad es una simulación didáctica: los celulares no ejecutan Spark real. Cada celular es una compu que pinta sus puntos y manda un resumen al coordinador.
 
 ## Preparación previa
 
-1. En la carpeta `Actividad-BaseDeDatos`, ejecutar `npm start`.
-2. Abrir la URL de **Presentación** que imprime la terminal. La consola del driver está integrada en la última diapositiva y recibe la clave automáticamente.
-3. Comprobar que el QR del último tramo apunta a la dirección de red local de la computadora. Los alumnos deben poder abrir esa dirección.
-4. Probar con un celular antes de exponer: unirse, asignar un punto, procesar, enviar y reducir. La comparación de tarjetas y sus resultados se presentan en las primeras diapositivas.
-5. Si los teléfonos no pueden conectarse al servidor, usar el plan alternativo del informe: puntos y centroides impresos, asignación manual y combinación de sumas y cantidades en la pizarra.
+1. En la carpeta `Actividad-BaseDeDatos`, ejecutá `npm start`.
+2. Abrí la dirección de **Presentación** que imprime la terminal. La actividad está en la última diapositiva.
+3. Comprobá que el QR apunte a la dirección de red de la computadora. Esa dirección aparece en texto al lado del QR.
+4. Probá todo el recorrido con un celular antes de exponer: unirse, pintar los 6 puntos, enviar, juntar, repetir, apagar una compu y cierre.
+5. Para ensayar sin clase, ejecutá `npm run bots -- 25`. Simula 25 celulares que se conectan solos.
+6. Si los celulares no pueden conectarse, usá el plan alternativo del informe: puntos y centros impresos, cada mesa pinta a mano y los resúmenes se juntan en la pizarra.
 
-## Qué ve y hace la audiencia
+## Qué ve y hace la clase
 
 ### 10:00–11:00 · Unirse
 
-En la última diapositiva ya está visible el QR de la consola. Pidan que la clase lo escanee y escriba su nombre. Expliquen:
+**Proyector:** "Sumate con tu celular", el QR grande y la dirección en texto. A la derecha, las compus conectadas.
 
-> “La pantalla del proyector representa al driver que coordina. Cada celular representa un executor para esta simulación.”
+**Clase:** escanea el QR, escribe su nombre y toca **Entrar**. Tiene que dejar la pantalla prendida.
 
-No presenten los celulares como executors de Spark reales.
+**Celular:** "Sos la compu 07", con su nombre.
 
-### 11:00–12:00 · Repartir
+Cuando haya gente conectada, tocá **Empezar: repartir los puntos**.
 
-Cuando haya participantes conectados, inicien la actividad desde la consola. A cada celular le llegará una partición de ocho puntos.
+> "Tu celular ahora es una compu del clúster. El proyector es el coordinador; en Spark se llama driver."
 
-> “El conjunto se dividió en particiones; cada participante recibió solo una parte.”
+### 11:00–12:30 · Pintar
 
-### 12:00–13:30 · Asignar un punto y procesar la partición
+Cada celular recibe 6 puntos y hay 3 centros de colores.
 
-Cada celular muestra ocho puntos y tres centroides. La persona ubica en el gráfico el punto rodeado, elige el color del centroide que le parece más cercano y toca **Confirmar y procesar**. La aplicación confirma si acertó y asigna automáticamente los otros siete puntos.
+**Proyector:** todos los puntos en gris y los 3 centros. Cuando alguien envía, sus puntos se pintan. Muestra "Listos: 14 de 22".
 
-> “La asignación al centroide más cercano es un paso de K-Means. Ustedes hicieron ese paso para un punto; el executor lo repite para el resto de su partición.”
+**Clase:** toca el centro (violeta, celeste o rosa) que le queda más cerca del punto que titila. Si se equivoca, la app le dice "Casi. Fijate otra vez" y puede volver a probar. Al pintar los 6, toca **Enviar al coordinador**.
 
-### 13:30–15:00 · Comparar qué mandar
+**Vos:** cuando ya envió la mayoría, tocá **Juntar los resultados**. El botón se habilita con el primer envío.
 
-Dividan el aula en dos mitades. La mitad izquierda selecciona A; la mitad derecha, C:
+> "Cada compu pinta sus 6 puntos del centro que le queda más cerca. Lo que manda es un resumen, no los puntos."
 
-- **A · Todos mis puntos:** manda cada punto y su grupo.
-- **C · Sumas y cantidad:** manda por grupo la suma de coordenadas y cuántos puntos hay.
+### 12:30–13:30 · Juntar
 
-Elijan la opción indicada y luego envíen. Así la clase verá en el proyector cómo cambia el volumen de datos entre ambas formas. Expliquen que las sumas y cantidades permiten calcular los mismos promedios que los puntos completos, pero con un mensaje más pequeño. La asignación A/C es para comparar los mensajes en esta simulación; no significa que los estudiantes estén configurando la arquitectura real de Spark.
+**Proyector:** "Paso 2 · El coordinador junta todo". Los centros se mueven con una línea punteada desde su posición anterior. Dato destacado: "Por la red viajaron 22 resúmenes, no 132 puntos."
 
-### 15:00–16:00 · Enviar y mirar el proyector
+**Clase:** mira cómo se mueven los centros. En su celular aparece "El coordinador juntó todo".
 
-Todos tocan **Enviar al driver**. En la consola, muestren cuántos mensajes llegaron y el volumen de datos reportado.
+**Vos:** tocá **Repetir**.
 
-> “Los executors procesaron localmente y enviaron resultados parciales. En una aplicación distribuida, el intercambio necesario por la red se llama shuffle; enviar menos datos puede reducir comunicación.”
+> "Cada compu mandó cuántos puntos tiene de cada color y dónde están. Con eso el coordinador movió los centros."
 
-### 16:00–17:00 · Reducir y cerrar la actividad
+### 13:30–15:00 · Repetir
 
-Cuando hayan enviado los participantes activos, cambien a **Reduce**. El driver combina los resúmenes y mueve los centroides. Digan:
+**Proyector:** "Paso 3 · Repetir hasta que no cambie". Contador "Vuelta 3" y un gráfico chico con una barra por vuelta. Botones **Otra vuelta** y **Seguir solo**.
 
-> “Eso completa una iteración de K-Means: los puntos se asignan a centros y los centros se actualizan con los resultados combinados. La web representa el flujo con fines didácticos; no ejecuta Apache Spark.”
+**Clase:** los celulares pintan solos. En cada vuelta los centros se acomodan un poco más.
 
-## Si falta participación
+**Vos:** tocá **Seguir solo** o **Otra vuelta**. Cuando los centros dejan de moverse, aparece "Listo: los centros ya no se mueven". Después tocá **Siguiente: apagar una compu**.
 
-- Si alguien no logra conectarse, puede seguir el flujo desde la pantalla; no hace falta reiniciar.
-- No reduzcan antes de que los participantes activos hayan enviado, porque las particiones pendientes quedarían fuera.
-- Si no hay Wi-Fi utilizable, ejecuten el plan alternativo con tarjetas de coordenadas que describe el informe.
+> "Repetir lo mismo sobre los mismos datos es entrenar un modelo. Esto es K-Means."
+
+### 15:00–16:00 · Se apaga una compu
+
+**Proyector:** "Paso 4 · ¿Y si se apaga una compu?" Podés tocar una compu para apagarla, o usar **Apagar una al azar**. Después aparece un cartel como "Se apagó la compu de Ana. Sus 6 puntos ahora los pinta Bruno. No se perdió nada." Esos puntos quedan marcados con un anillo.
+
+**Clase:** el celular apagado muestra "Tu compu se apagó". Es de mentira: sus puntos los pinta otra compu. El celular que heredó dice "Heredaste 6 puntos de Ana. Ahora tenés 12."
+
+**Vos:** si hace falta, tocá **Prender todas**. Después tocá **Cierre**.
+
+> "Si una compu se apaga, otra hace su parte y no se pierde nada."
+
+### 16:00–17:00 · Cierre
+
+**Proyector:** "Lo que hicimos es lo que hace un clúster". Una tabla compara el aula con un clúster de verdad. Abajo, los números: "22 compus · 132 puntos · 6 vueltas".
+
+| En el aula | En un clúster de verdad |
+|---|---|
+| El proyector repartió y juntó | Coordinador (driver) |
+| Sus celulares | Computadoras que trabajan (workers) |
+| Sus 6 puntos | Una parte de los datos (partición) |
+| Pintar los puntos | La tarea de cada compu (map) |
+| Mandar el resumen | Lo único que viaja por la red |
+| Juntar los resúmenes | Reduce |
+| Repetir vueltas | Entrenar el modelo (K-Means) |
+| Apagar una compu | Tolerancia a fallos |
+
+**Clase:** mira la tabla. En su celular aparece "Gracias por ser parte del clúster", con sus números.
+
+**Vos:** si la clase quiere otra ronda, usá **Reiniciar actividad**. Pide confirmación.
+
+> "Con Spark MLlib, todo esto se escribe así: `modelo = KMeans(k=3).fit(datos)`."
+
+## Teclas del proyector
+
+| Tecla | Acción |
+|---|---|
+| → / ← | Fase siguiente / anterior (cuando se puede) |
+| Espacio o R | Otra vuelta (en Repetir y en Se apaga una compu) |
+| S | Seguir solo / pausar |
+| K | Apagar una al azar (en Se apaga una compu) |
+| Q | Mostrar u ocultar el QR grande |
+| T | Alto contraste |
+| F | Pantalla completa |
+| Esc | Cierra el QR |
+
+## Si algo falla
+
+- **Alguien no se conecta:** puede mirar el proyector. La actividad sigue sin él.
+- **Alguien entra tarde:** recibe puntos igual.
+- **Alguien no termina de pintar:** se puede juntar igual. El servidor completa sus puntos.
+- **Sin wifi:** usá el plan alternativo del informe, con puntos y centros impresos.

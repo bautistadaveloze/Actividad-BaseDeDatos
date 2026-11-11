@@ -21,7 +21,8 @@ Cada diapositiva tiene hasta cuatro partes:
 |---|---|---|
 | 01 · El problema | 1–8 | 7 min |
 | 02 · Procesamiento distribuido | 9–15 | 8 min |
-| 03 · ML sobre datos masivos | 16–24 | 9 min |
+| 03 · ML sobre datos masivos (persona 1): qué es ML y K-Means | 16–19 | 4 min |
+| 03 · ML sobre datos masivos (persona 2): entrenar con datos repartidos | 20–24 | 5 min |
 | 04 · Apache Spark y MLlib | 25–40 | 11 min |
 | 05 · Cierre y actividad | 41–44 | 2 min + 15 min de actividad |
 

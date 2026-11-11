@@ -3,51 +3,72 @@
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
 
-  const PHASES = [
+  const ORDER = ['lobby', 'paint', 'combine', 'auto', 'fail', 'end'];
+  const STEPS = [
     { id: 'lobby', label: 'Unirse' },
-    { id: 'map', label: 'Map a mano' },
-    { id: 'reduce', label: 'Reduce' },
-    { id: 'spark', label: 'Modo Spark' },
-    { id: 'faults', label: 'Fallos' },
-    { id: 'hadoop', label: 'Hadoop vs Spark' },
-    { id: 'code', label: 'Código' },
+    { id: 'paint', label: 'Pintar' },
+    { id: 'combine', label: 'Juntar' },
+    { id: 'auto', label: 'Repetir' },
+    { id: 'fail', label: 'Se apaga una' },
+    { id: 'end', label: 'Cierre' },
   ];
-  const MAIN_PHASES = PHASES.slice(0, 3);
-  const VIEW_OF = { lobby: 'lobby', map: 'plot', reduce: 'plot', spark: 'plot', faults: 'plot', hadoop: 'race', code: 'code' };
-  const CLUSTERS = ['violeta', 'cian', 'rosa'];
-  const STATUS = {
-    idle: 'Libre', busy: 'Trabajando', done: 'Envió', slow: 'Straggler',
-    dead: 'Caído', offline: 'Sin conexión', standby: 'Reserva',
+
+  // Texts come straight from presentacion-web/ACTIVIDAD.md, section 4.
+  const COPY = {
+    lobby: {
+      title: 'Sumate con tu celular',
+      lead: 'Escaneá el QR. Tu celular va a ser una de las computadoras del clúster.',
+    },
+    paint: {
+      title: 'Paso 1 · Pintá tus puntos',
+      lead: 'Cada celular recibió 6 puntos. Pintá cada uno del color del centro que le queda más cerca.',
+      main: 'Los datos se repartieron. Cada compu tiene solo su parte y trabaja sin esperar a nadie.',
+      tech: 'En un clúster: cada parte es una partición y pintar es la tarea (map).',
+    },
+    combine: {
+      title: 'Paso 2 · El coordinador junta todo',
+      lead: 'Con los resúmenes de todos, mueve cada centro al medio de su grupo.',
+      main: 'Cada compu mandó solo cuántos puntos pintó de cada color y dónde están. Con eso alcanza para mover los centros.',
+      tech: 'En un clúster: juntar es el reduce. Se mueve el cálculo, no los datos.',
+    },
+    auto: {
+      title: 'Paso 3 · Repetir hasta que no cambie',
+      lead: 'Ahora cada celular pinta solo. En cada vuelta los centros se acomodan un poco más.',
+      main: 'Entrenar un modelo es esto: repetir muchas veces lo mismo sobre los mismos datos.',
+      tech: 'En Spark los datos quedan en memoria; por eso cada vuelta es rápida.',
+    },
+    fail: {
+      title: 'Paso 4 · ¿Y si se apaga una compu?',
+      lead: 'Tocá una compu para apagarla. Sus puntos pasan a otra y el trabajo sigue.',
+      main: '',
+      tech: 'En un clúster real se rompen máquinas todos los días. El coordinador repite ese trabajo en otra: eso es tolerancia a fallos.',
+    },
+    end: {
+      title: 'Lo que hicimos es lo que hace un clúster',
+      lead: '',
+    },
   };
-  const OPTION_NAME = { A: 'Todos los puntos', B: 'Promedios', C: 'Sumas y cantidad' };
+
+  // Status -> icon and tone. Never color alone: every state has its own icon.
+  const STATUS = {
+    waiting: { icon: 'check', tone: 'ok', label: 'conectada' },
+    painting: { icon: 'timer', tone: 'warn', label: 'pintando' },
+    sent: { icon: 'check', tone: 'ok', label: 'envió' },
+    idle: { icon: 'check', tone: 'ok', label: 'libre' },
+    working: { icon: 'zap', tone: 'accent', label: 'trabajando' },
+    off: { icon: 'power-off', tone: 'bad', label: 'apagada' },
+    offline: { icon: 'wifi-off', tone: 'mute', label: 'sin conexión' },
+  };
 
   const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="/icons.svg#${name}"/></svg>`;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const pad = (n) => String(n).padStart(2, '0');
-  const nf1 = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-  const nf0 = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
-  const fmtSec = (ms) => `${nf1.format(ms / 1000)} s`;
-  const fmtBytes = (b) => {
-    if (b < 1024) return `${nf0.format(b)} B`;
-    if (b < 1024 ** 2) return `${nf1.format(b / 1024)} KB`;
-    return `${nf1.format(b / 1024 ** 2)} MB`;
-  };
-  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-  const nearest = (p, cs) => {
-    let best = 0;
-    let bd = Infinity;
-    for (let j = 0; j < cs.length; j++) {
-      const d = (p.x - cs[j].x) ** 2 + (p.y - cs[j].y) ** 2;
-      if (d < bd) { bd = d; best = j; }
-    }
-    return best;
-  };
-  const easeOut = (t) => (t >= 1 ? 1 : 1 - 2 ** (-10 * t));
+  const nf = new Intl.NumberFormat('es-AR');
+  const plural = (n, one, many) => `${nf.format(n)} ${n === 1 ? one : many}`;
 
+  const embedded = document.documentElement.dataset.embed === 'true';
   let socket = null;
   let state = null;
-  let points = null;
-  let openMenuId = null;
 
   // ------------------------------------------------------------ auth
 
@@ -56,8 +77,9 @@
   try {
     if (key) sessionStorage.setItem('driver-key', key);
     else key = sessionStorage.getItem('driver-key');
-  } catch { /* storage blocked: key only lives in this page */ }
-  if (params.has('key')) history.replaceState(null, '', '/driver');
+  } catch { /* storage blocked: the key only lives in this page */ }
+  // Keep the key out of the address bar (and of screenshots), but stay embedded.
+  if (params.has('key')) history.replaceState(null, '', embedded ? '/driver?embed=1' : '/driver');
 
   function showAuth(message = '') {
     $('#auth').hidden = false;
@@ -77,12 +99,9 @@
     if (socket) socket.close();
     socket = io({ auth: { role: 'driver', key } });
     socket.on('auth:error', (msg) => { socket.close(); showAuth(msg); });
-    socket.on('data', (p) => { points = p; plot.dirty = true; });
-    socket.on('state', (s) => {
-      const prev = state;
-      state = s;
-      onState(prev);
-    });
+    socket.on('connect', () => { $('#conn').hidden = true; });
+    socket.on('disconnect', () => { $('#conn').hidden = false; });
+    socket.on('state', (s) => { state = s; render(); });
   }
 
   const send = (event, payload) => socket && socket.emit(event, payload);
@@ -90,22 +109,47 @@
   if (key) connect();
   else showAuth();
 
-  // ------------------------------------------------------------ theme & chrome
+  // ------------------------------------------------------------ rules
+
+  const connectedCount = (s) => s.phones.filter((p) => p.status !== 'offline').length;
+  const liveCount = (s) => s.phones.filter((p) => p.status !== 'offline' && p.status !== 'off').length;
+
+  // Phase changes the server accepts (ACTIVIDAD.md 6.3): lobby -> paint needs a
+  // phone, paint -> combine needs a submitted phone, and from combine on you
+  // can move freely among combine, auto, fail and end.
+  function canGo(s, id) {
+    if (!s || id === s.phase) return false;
+    if (s.phase === 'lobby') return id === 'paint' && connectedCount(s) > 0;
+    if (s.phase === 'paint') return id === 'combine' && s.progress.done > 0;
+    return ORDER.indexOf(id) >= ORDER.indexOf('combine');
+  }
+
+  function go(delta) {
+    if (!state) return;
+    const target = ORDER[ORDER.indexOf(state.phase) + delta];
+    if (target && canGo(state, target)) send('phase', { phase: target });
+  }
+
+  // In `fail` a round is allowed after convergence: it shows the work goes on without the lost phone.
+  const canRound = (s) => !s.busy && (s.phase === 'fail' || (s.phase === 'auto' && !s.converged));
+  const canKill = (s) => s.phase === 'fail' && liveCount(s) > 1;
+
+  // ------------------------------------------------------------ chrome
 
   function setTheme(theme) {
     document.documentElement.dataset.theme = theme;
     $('#themeBtn').setAttribute('aria-pressed', String(theme === 'contrast'));
     try { localStorage.setItem('driver-theme', theme); } catch { /* ignore */ }
-    plot.readColors();
   }
   const toggleTheme = () => setTheme(document.documentElement.dataset.theme === 'contrast' ? 'dark' : 'contrast');
   $('#themeBtn').addEventListener('click', toggleTheme);
   $('#themeBtn').setAttribute('aria-pressed', String(document.documentElement.dataset.theme === 'contrast'));
 
-  const toggleFullscreen = () => {
+  function toggleFullscreen() {
+    if (embedded) { parent.postMessage({ type: 'deck-fullscreen' }, location.origin); return; }
     if (document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen().catch(() => {});
-  };
+  }
   $('#fullBtn').addEventListener('click', toggleFullscreen);
 
   const qr = $('#qrOverlay');
@@ -113,865 +157,375 @@
   $('#joinChip').addEventListener('click', () => toggleQr(true));
   qr.addEventListener('click', (e) => { if (e.target === qr || e.target.closest('[data-close]')) toggleQr(false); });
 
-  function go(delta) {
-    if (!state) return;
-    const i = MAIN_PHASES.findIndex((p) => p.id === state.phase);
-    const next = MAIN_PHASES[i + delta];
-    if (!next) return;
-    if (state.phase === 'map' && next.id === 'reduce') send('manual:reduce');
-    else send('phase', { phase: next.id });
+  const confirmBox = $('#confirm');
+  function askReset(show) {
+    confirmBox.hidden = !show;
+    if (show) $('#confirmNo').focus();
   }
+  $('#confirmNo').addEventListener('click', () => askReset(false));
+  $('#confirmYes').addEventListener('click', () => { askReset(false); send('reset'); });
+  confirmBox.addEventListener('click', (e) => { if (e.target === confirmBox) askReset(false); });
+
+  const toggleRun = () => { if (state && (state.phase === 'auto' || state.phase === 'fail') && (state.running || !state.converged)) send('run', { on: !state.running }); };
+  const doRound = () => { if (state && canRound(state)) send('round'); };
+  const doKill = () => { if (state && canKill(state)) send('kill', {}); };
 
   document.addEventListener('keydown', (e) => {
-    if (e.target.closest('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === 'Escape') { toggleQr(false); closeMenu(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target instanceof HTMLInputElement) return;
+    if (e.key === 'Escape') { toggleQr(false); askReset(false); return; }
+    if (!confirmBox.hidden) return; // the dialog owns the keyboard while open
+    const k = e.key.toLowerCase();
     if (e.key === 'ArrowRight') go(1);
     else if (e.key === 'ArrowLeft') go(-1);
-    else if (e.key === 't' || e.key === 'T') toggleTheme();
-    else if (e.key === 'q' || e.key === 'Q') toggleQr();
-    else if (e.key === 'f' || e.key === 'F') {
-      if (document.documentElement.dataset.embed === 'true') parent.postMessage({ type: 'deck-fullscreen' }, location.origin);
-      else toggleFullscreen();
-    }
-    else if (e.key === ' ' && state && (state.phase === 'spark' || state.phase === 'faults')) {
-      e.preventDefault();
-      send(state.job && state.job.running && !state.job.stopping ? 'job:pause' : 'job:run');
-    } else return;
+    else if (e.key === ' ' || k === 'r') { e.preventDefault(); doRound(); }
+    else if (k === 's') toggleRun();
+    else if (k === 'k') doKill();
+    else if (k === 'q') toggleQr();
+    else if (k === 't') toggleTheme();
+    else if (k === 'f') toggleFullscreen();
   });
 
-  // ------------------------------------------------------------ state
+  // ------------------------------------------------------------ stepper
 
-  function onState(prev) {
-    const phaseChanged = !prev || prev.phase !== state.phase;
-    if (phaseChanged) closeMenu();
+  const stepper = $('#stepper');
+  stepper.innerHTML = STEPS.map((st, i) =>
+    `<button class="step" type="button" data-step="${st.id}"><span class="step-n">${i + 1}</span><span class="step-label">${st.label}</span></button>`).join('');
+  stepper.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-step]');
+    if (btn && state && canGo(state, btn.dataset.step)) send('phase', { phase: btn.dataset.step });
+  });
 
-    const target = state.phase === 'reduce' && state.manual && state.manual.result
-      ? state.manual.result.after : state.centroids;
-    plot.setCentroids(target, !prev);
-
-    if (state.manual) {
-      const now = performance.now();
-      for (const s of state.manual.submissions) {
-        if (!plot.arrivals.has(s.id)) plot.arrivals.set(s.id, prev ? now : 0);
-      }
-    } else plot.arrivals.clear();
-
-    renderStepper();
-    renderView(phaseChanged);
-    renderExecutors();
-    renderPanel();
-    renderLog();
-    if (openMenuId != null) renderMenu();
-    plot.dirty = true;
-  }
-
-  function renderStepper() {
-    const nav = $('#stepper');
-    const current = MAIN_PHASES.findIndex((p) => p.id === state.phase);
-    if (!nav.children.length) {
-      nav.innerHTML = `${MAIN_PHASES.map((p) => `<button class="step" type="button" data-phase="${p.id}"><span class="dot"></span>${p.label}</button>`).join('')}<span class="step-extra" id="stepExtra" aria-live="polite"></span>`;
-      nav.addEventListener('click', (e) => {
-        const b = e.target.closest('[data-phase]');
-        if (!b) return;
-        if (b.dataset.phase === 'reduce' && state.phase === 'map') send('manual:reduce');
-        else send('phase', { phase: b.dataset.phase });
-      });
-    }
-    [...nav.querySelectorAll('[data-phase]')].forEach((b, i) => {
-      b.classList.toggle('is-active', i === current);
-      b.classList.toggle('is-done', i < current);
-      if (i === current) b.setAttribute('aria-current', 'step');
-      else b.removeAttribute('aria-current');
+  function renderStepper(s) {
+    const cur = ORDER.indexOf(s.phase);
+    stepper.querySelectorAll('.step').forEach((btn, i) => {
+      const id = STEPS[i].id;
+      const active = i === cur;
+      btn.classList.toggle('is-active', active);
+      btn.classList.toggle('is-done', i < cur);
+      btn.disabled = !active && !canGo(s, id);
+      btn.setAttribute('aria-current', active ? 'step' : 'false');
+      btn.querySelector('.step-n').innerHTML = i < cur ? icon('check') : String(i + 1);
     });
-    const extra = PHASES.find((p) => p.id === state.phase && !MAIN_PHASES.includes(p));
-    $('#stepExtra').textContent = extra ? `Opcional: ${extra.label}` : '';
-    const url = state.publicUrl.replace(/^https?:\/\//, '');
-    $('#joinUrl').textContent = url;
-    $('#lobbyUrl').textContent = url;
-    $('#overlayUrl').textContent = url;
   }
 
-  // ------------------------------------------------------------ views
+  // ------------------------------------------------------------ plot (SVG)
 
-  function renderView(phaseChanged) {
-    const view = VIEW_OF[state.phase];
-    if (phaseChanged) {
-      document.querySelectorAll('.view').forEach((v) => v.classList.toggle('is-active', v.dataset.view === view));
-      if (view === 'plot') requestAnimationFrame(layoutPlot);
-    }
-    if (view === 'lobby') renderLobby();
-    if (view === 'plot') renderPlotView();
-    if (view === 'race') renderRace();
-    if (view === 'code') renderCode();
-  }
-
-  function renderLobby() {
-    const list = $('#lobbyNames');
-    const present = new Set();
-    for (const w of state.workers) {
-      if (w.status === 'offline') continue;
-      present.add(String(w.id));
-      if (!list.querySelector(`[data-id="${w.id}"]`)) {
-        const li = document.createElement('li');
-        li.dataset.id = w.id;
-        list.append(li);
-      }
-      list.querySelector(`[data-id="${w.id}"]`).innerHTML = `<span class="mono">#${pad(w.id)}</span>${esc(w.name)}`;
-    }
-    [...list.children].forEach((li) => { if (!present.has(li.dataset.id)) li.remove(); });
-  }
-
-  const legendClusters = () => CLUSTERS.map((n, j) => `<span><i class="shape shape-${j}"></i>Centroide ${n}</span>`).join('');
-
-  function renderPlotView() {
-    const p = state.phase;
-    const m = state.manual;
-    const job = state.job;
-    const subs = m ? m.submissions : [];
-    const r = m && m.result;
-    const totalBytes = subs.reduce((a, s) => a + s.bytes, 0);
-    const lastCost = state.history.length ? state.history[state.history.length - 1].cost : null;
-    const iter = job ? job.iter : state.history.length;
-    const deadCount = state.workers.filter((w) => w.status === 'dead' || w.status === 'offline').length;
-
-    let title = '';
-    let sub = '';
-    let metrics = [];
-    let legend = legendClusters();
-    let insight = '';
-
-    if (p === 'map') {
-      title = 'Iteración 1 · map a mano';
-      sub = 'Cada participante asigna un punto; la web procesa los otros siete. Mitad izquierda envía A; mitad derecha, C.';
-      metrics = [['Enviaron', `${subs.length}/${m ? m.owners : 0}`], ['Por la red', fmtBytes(totalBytes)]];
-      legend += '<span><i class="shape shape-0" style="opacity:.55"></i>Datos que llegaron</span>';
-      if (subs.some((s) => s.option === 'B')) legend += '<span><i class="legend-ring"></i>Promedio enviado</span>';
-      insight = `
-        <div class="question">${icon('layers')}<p>Comparen los envíos: A manda todos los puntos; C manda sumas y cantidades.</p></div>
-        <div class="insight-block">
-          <h3>Lo que llegó al driver</h3>
-          ${subs.length ? `<ul class="subs">${subs.slice().reverse().slice(0, 9).map((s) => `
-            <li><span class="mono">#${pad(s.id)}</span><span class="who">${esc(s.name)}</span><span class="mono">${fmtBytes(s.bytes)}</span><span class="opt opt-${s.option}">${s.option}</span></li>`).join('')}
-          </ul>${subs.length > 9 ? `<p class="insight-text">y ${subs.length - 9} más</p>` : ''}`
-            : '<p class="insight-text">Todavía nada. Mientras tanto, el driver no tiene ni un solo punto: los datos están repartidos en los celulares.</p>'}
-        </div>`;
-    } else if (p === 'reduce' && r) {
-      title = 'Reduce';
-      sub = 'El driver combina lo que recibió y mueve los centroides.';
-      const worst = r.error.reduce((bi, e, j, arr) => (e > arr[bi] ? j : bi), 0);
-      const sent = r.counts.A + r.counts.B + r.counts.C;
-      metrics = [['Mensajes', String(sent)], ['Puntos procesados', String(r.points)], ['Por la red', fmtBytes(r.bytes.A + r.bytes.B + r.bytes.C)]];
-      if (r.counts.B) legend += '<span><i class="legend-ring"></i>Donde tendría que estar</span>';
-      const callout = r.counts.B
-        ? `<div class="callout">${icon('circle-alert')}<p>El centroide <strong>${CLUSTERS[worst]}</strong> quedó a <strong class="mono">${nf1.format(r.error[worst])}</strong> de donde debía. ${r.counts.B === 1 ? 'Un executor mandó promedios' : `${r.counts.B} executors mandaron promedios`}: sin la cantidad, el driver no sabe cuánto pesa cada uno y los cuenta como si fueran un solo punto.</p></div>`
-        : `<div class="callout ok">${icon('check')}<p>El driver combinó los resultados y calculó los nuevos centroides.</p></div>`;
-      const row = (o, text, scale) => `
-        <div class="breakdown-row">
-          <span class="opt opt-${o}">${o}</span>
-          <h4>${OPTION_NAME[o]}</h4>
-          <span class="count">${r.counts[o]}</span>
-          <p>${text}</p>
-          <div class="scale"><span>Esta ronda <b class="mono">${fmtBytes(r.bytes[o])}</b></span><span>Con 1 M de puntos por partición <b class="mono">${fmtBytes(r.scaled[o])}</b> c/u</span></div>
-        </div>`;
-      insight = `
-        ${callout}
-        <div class="insight-block">
-          <h3>Qué mandó cada executor</h3>
-          <div class="breakdown">
-            ${row('A', 'Exacto, pero mueve todo el dato por la red. Es el <strong>shuffle</strong> caro.', true)}
-            ${row('C', 'Lo que hace Spark: <strong>agregación parcial</strong> (combiner). Liviano y exacto.', true)}
-            ${r.counts.B ? row('B', 'Liviano pero <strong>incorrecto</strong>: un promedio de promedios no pondera.', true) : ''}
-          </div>
-        </div>
-        ${r.wrong ? `<p class="insight-text">En el map se asignaron mal <strong>${r.wrong}</strong> de ${r.points} puntos. El driver no se entera: confía en lo que le mandan.</p>` : ''}
-        ${r.missing ? `<p class="insight-text">Faltaron <strong>${r.missing}</strong> particiones: este reduce usó datos incompletos. Spark esperaría esas tareas o las reintentaría.</p>` : ''}`;
-    } else if (p === 'spark' || p === 'faults') {
-      const recovered = state.lineage.length;
-      title = p === 'spark' ? 'Modo Spark' : 'Tolerancia a fallos';
-      sub = p === 'spark'
-        ? 'Los executors calculan solos. Mismo algoritmo, iterado hasta que los centroides dejan de moverse.'
-        : 'Tirá executors abajo en medio del job. El driver no pierde nada: recalcula lo que falta en otro lado.';
-      metrics = [['Iteración', iter ? String(iter) : '–'], ['Tareas', job ? `${job.done}/${job.total}` : '–'], ['Costo', lastCost == null ? '–' : nf0.format(lastCost)]];
-      if (p === 'faults') metrics.splice(1, 1, ['Caídos', String(deadCount)], ['Recuperadas', String(recovered)]);
-      insight = p === 'spark' ? sparkInsight() : faultsInsight();
-    }
-
-    $('#plotTitle').textContent = title;
-    $('#plotSub').textContent = sub;
-    $('#metrics').innerHTML = metrics.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');
-    setHtml($('#plotLegend'), legend);
-    setHtml($('#insight'), insight);
-    $('#plotEmpty').hidden = !(p === 'map' && !subs.length);
-  }
-
-  function sparkInsight() {
-    const h = state.history;
-    let chart = '<p class="insight-text">Todavía no corrió ninguna iteración automática.</p>';
-    if (h.length) {
-      const W = 320;
-      const H = 120;
-      const max = Math.max(...h.map((x) => x.cost));
-      const min = Math.min(...h.map((x) => x.cost));
-      const span = Math.max(1, max - min);
-      const xs = (i) => (h.length === 1 ? W / 2 : (i / (h.length - 1)) * W);
-      const ys = (c) => 8 + (1 - (c - min) / span) * (H - 16);
-      const pts = h.map((x, i) => `${xs(i).toFixed(1)},${ys(x.cost).toFixed(1)}`).join(' ');
-      chart = `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Costo por iteración">
-        <line class="grid" x1="0" x2="${W}" y1="${H}" y2="${H}"/>
-        <polygon class="area" points="0,${H} ${pts} ${xs(h.length - 1)},${H}"/>
-        <polyline class="line" points="${pts}"/>
-        ${h.map((x, i) => `<circle class="pt" r="3" cx="${xs(i)}" cy="${ys(x.cost)}"/>`).join('')}
-      </svg>
-      <div class="chart-axis mono"><span>it ${h[0].iter} · ${nf0.format(h[0].cost)}</span><span>it ${h[h.length - 1].iter} · ${nf0.format(h[h.length - 1].cost)}</span></div>`;
-    }
-    const recent = h.slice(-8);
-    const sorted = recent.map((x) => x.ms).sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] || 1;
-    const maxMs = Math.max(...recent.map((x) => x.ms), 1);
-    const bars = recent.map((x) => {
-      const slow = x.ms > median * 1.8;
-      return `<div class="bar-row"><span class="mono">it ${x.iter}</span><div class="bar-track"><div class="bar-fill${slow ? ' warn' : ''}" style="transform:scaleX(${x.ms / maxMs})"></div></div><span class="mono">${fmtSec(x.ms)}</span></div>`;
-    }).join('');
-    const hadStraggler = recent.some((x) => x.ms > median * 1.8);
-    return `
-      <div class="question">${icon('turtle')}<p>¿Qué pasa con toda la iteración si un solo executor es mucho más lento que el resto?</p></div>
-      <div class="insight-block">
-        <h3>Costo por iteración (WSSSE)</h3>
-        ${chart}
-        <p class="insight-text">La suma de distancias al cuadrado de cada punto a su centroide. Cuando deja de bajar, el modelo convergió.</p>
-      </div>
-      ${recent.length ? `<div class="insight-block">
-        <h3>Duración de cada iteración</h3>
-        <div class="bars">${bars}</div>
-        ${hadStraggler ? '<p class="insight-text">Las barras ámbar esperaron a un <strong>straggler</strong>: la iteración termina cuando llega la última tarea.</p>' : ''}
-      </div>` : ''}`;
-  }
-
-  function faultsInsight() {
-    const events = state.lineage;
-    const last = events[events.length - 1];
-    const n = state.data ? state.data.partitions.length : 0;
-    const arrow = icon('chevron-right');
-    const dag = last ? `
-      <div class="dag" aria-label="Lineage de la partición P${pad(last.pid)}">
-        <span class="dag-node">clientes.csv</span>${arrow}
-        <span class="dag-node">read.csv</span>${arrow}
-        <span class="dag-node">repartition(${n})</span>${arrow}
-        <span class="dag-node lost">P${pad(last.pid)} en #${last.from == null ? '–' : pad(last.from)}</span>${arrow}
-        <span class="dag-node new">P${pad(last.pid)} en #${pad(last.to)}</span>
-      </div>` : '<p class="insight-text">Todavía no se perdió ninguna partición. Tocá un executor y tiralo abajo, o pedile a alguien que cierre la pestaña.</p>';
-    const list = events.slice().reverse().slice(0, 6).map((e) => `
-      <li>${icon('git-branch')}<span>P${pad(e.pid)}: #${e.from == null ? '–' : pad(e.from)} → #${pad(e.to)} <span class="mono">(${esc(e.reason)})</span></span></li>`).join('');
-    return `
-      <div class="question">${icon('skull')}<p>Si se cae un celular en medio del job, ¿se pierden sus datos? ¿Hay que empezar de cero?</p></div>
-      <div class="insight-block lineage">
-        <h3>Lineage de la última partición recuperada</h3>
-        ${dag}
-        <p class="insight-text">Spark no copia cada partición por las dudas: guarda la <strong>receta</strong> que la generó. Si se pierde, la vuelve a calcular desde el origen en otro executor.</p>
-      </div>
-      ${events.length ? `<div class="insight-block"><h3>Recuperaciones</h3><ul class="lineage-list">${list}</ul></div>` : ''}`;
-  }
-
-  function renderRace() {
-    const cfg = state.config;
-    const job = state.job && state.job.race ? state.job : null;
-    const lanes = [
-      { mode: 'hadoop', title: 'Hadoop MapReduce', desc: 'Cada iteración lee la partición del disco y escribe el resultado de vuelta.' },
-      { mode: 'spark', title: 'Spark', desc: 'Lee una sola vez y deja la partición en memoria con cache().' },
-    ];
-    const live = (mode) => {
-      if (job && job.mode === mode) {
-        const times = job.iterTimes.slice();
-        if (job.roundStartedAt) times.push(Date.now() - job.roundStartedAt);
-        return { times, total: times.reduce((a, b) => a + b, 0), running: true };
-      }
-      const r = state.race[mode];
-      return r ? { times: r.iterTimes, total: r.total, running: false } : null;
-    };
-    const data = lanes.map((l) => ({ ...l, run: live(l.mode) }));
-    const scale = Math.max(16000, ...data.map((d) => (d.run ? d.run.total : 0)));
-    const html = data.map((d) => {
-      const blocks = d.run ? d.run.times.map((ms, i) => {
-        const read = d.mode === 'hadoop' || i === 0 ? Math.min(cfg.diskReadMs, ms) : 0;
-        const write = d.mode === 'hadoop' ? Math.min(cfg.diskWriteMs, Math.max(0, ms - read)) : 0;
-        const pct = (v) => `${(v / Math.max(ms, 1)) * 100}%`;
-        return `<div class="iter" style="width:${(ms / scale) * 100}%">
-          ${read ? `<span class="seg-read" style="width:${pct(read)}"></span>` : ''}
-          <span class="seg-compute"></span>
-          ${write ? `<span class="seg-write" style="width:${pct(write)}"></span>` : ''}
-          ${ms / scale > 0.035 ? `<b>${i + 1}</b>` : ''}
-        </div>`;
-      }).join('') : '<div class="lane-empty">Sin correr todavía</div>';
-      return `<div class="lane">
-        <div class="lane-head">
-          <div><h3>${d.title}</h3><p>${d.desc}</p></div>
-          <span class="lane-total">${d.run ? fmtSec(d.run.total) : '–'}</span>
-        </div>
-        <div class="lane-track">${blocks}</div>
-      </div>`;
-    }).join('');
-    $('#race').innerHTML = `${html}
-      <div class="race-legend">
-        <span><i style="background:var(--warn)"></i>Disco: leer y escribir</span>
-        <span><i style="background:var(--accent)"></i>Cómputo en los executors</span>
-      </div>`;
-    const h = state.race.hadoop;
-    const s = state.race.spark;
-    setHtml($('#raceVerdict'), h && s ? `
-      <p class="speedup">${nf1.format(h.total / s.total)}×<small>más rápido con Spark</small></p>
-      <p class="insight-text">El cómputo es el mismo; la diferencia es el disco. Casi todo el ML es iterativo (K-Means, regresión logística, descenso por gradiente), y releer los datos en cada vuelta es justo lo que Spark eliminó al dejarlos en memoria.</p>` : '');
-  }
-
-  function renderCode() {
-    const n = state.data ? state.data.partitions.length : 30;
-    const cs = state.centroids.map((c) => `(${nf1.format(c.x)}, ${nf1.format(c.y)})`).join(' ');
-    const last = state.history[state.history.length - 1];
-    const lines = [
-      [
-        'spark = SparkSession.builder.<span class="tok-f">appName</span>(<span class="tok-s">"clientes"</span>).<span class="tok-f">getOrCreate</span>()',
-        'El <strong>driver</strong>: este proyector. Coordina, no procesa los datos.',
-      ],
-      [
-        'df = spark.read.<span class="tok-f">csv</span>(<span class="tok-s">"clientes.csv"</span>, header=<span class="tok-k">True</span>, inferSchema=<span class="tok-k">True</span>)',
-        `El dataset sintético: <span class="mono">${state.data ? state.data.points : '–'}</span> clientes. Todavía no se leyó nada: Spark es <strong>lazy</strong>.`,
-      ],
-      [
-        `df = df.<span class="tok-f">repartition</span>(<span class="tok-n">${n}</span>).<span class="tok-f">cache</span>()`,
-        `Una <strong>partición</strong> por celular, guardada <strong>en memoria</strong>. Eso le ganó a Hadoop.`,
-      ],
-      [
-        'data = <span class="tok-f">VectorAssembler</span>(inputCols=[<span class="tok-s">"gasto"</span>, <span class="tok-s">"visitas"</span>], outputCol=<span class="tok-s">"features"</span>).<span class="tok-f">transform</span>(df)',
-        'Cada punto (x, y) que tocaste en tu pantalla.',
-      ],
-      [
-        'kmeans = <span class="tok-f">KMeans</span>(k=<span class="tok-n">3</span>, maxIter=<span class="tok-n">12</span>, seed=<span class="tok-n">1</span>)',
-        'Tres centroides: violeta, cian y rosa.',
-      ],
-      [
-        'model = kmeans.<span class="tok-f">fit</span>(data)',
-        'Las iteraciones: <strong>map</strong> en cada executor, <strong>combine</strong> local (Σx, Σy, n) y <strong>reduce</strong> en el driver. Con reintentos, ejecución especulativa y lineage incluidos.',
-      ],
-      [
-        'model.<span class="tok-f">clusterCenters</span>()',
-        `Los centroides de la clase: <span class="mono">${cs}</span>`,
-      ],
-      [
-        'model.summary.trainingCost',
-        `El costo que bajaba en cada iteración${last ? `: <span class="mono">${nf0.format(last.cost)}</span>` : ''}.`,
-      ],
-    ];
-    setHtml($('#code'), `<div class="code-line"><pre><span class="tok-k">from</span> pyspark.ml.clustering <span class="tok-k">import</span> KMeans
-<span class="tok-k">from</span> pyspark.ml.feature <span class="tok-k">import</span> VectorAssembler</pre><p>MLlib: la librería de machine learning de Spark.</p></div>
-      ${lines.map(([c, t]) => `<div class="code-line"><pre>${c}</pre><p>${t}</p></div>`).join('')}`);
-  }
-
-  function setHtml(el, html) {
-    if (el._html !== html) { el.innerHTML = html; el._html = html; }
-  }
-
-  // ------------------------------------------------------------ executors
-
-  const grid = $('#execGrid');
-  grid.addEventListener('click', (e) => {
-    const cell = e.target.closest('[data-id]');
-    if (!cell) return;
-    const id = Number(cell.dataset.id);
-    if (openMenuId === id) closeMenu();
-    else openMenu(id, cell);
-  });
-
-  function renderExecutors() {
-    const ws = state.workers;
-    const seen = new Set();
-    if (!ws.length) {
-      setHtml(grid, '<p class="exec-empty">Nadie conectado todavía.</p>');
-    } else {
-      const empty = grid.querySelector('.exec-empty');
-      if (empty) { empty.remove(); grid._html = null; }
-    }
-    for (const w of ws) {
-      seen.add(String(w.id));
-      let cell = grid.querySelector(`[data-id="${w.id}"]`);
-      if (!cell) {
-        cell = document.createElement('button');
-        cell.type = 'button';
-        cell.className = 'exec';
-        cell.dataset.id = w.id;
-        cell.setAttribute('role', 'listitem');
-        grid.append(cell);
-      }
-      cell.dataset.status = w.status;
-      cell.textContent = pad(w.id);
-      cell.title = `#${pad(w.id)} ${w.name} · ${STATUS[w.status]}${w.partitions.length ? ` · ${w.partitions.map((p) => `P${pad(p)}`).join(', ')}` : ''}`;
-      cell.setAttribute('aria-label', cell.title);
-    }
-    grid.querySelectorAll('.exec').forEach((c) => { if (!seen.has(c.dataset.id)) c.remove(); });
-
-    const online = ws.filter((w) => w.status !== 'offline' && w.status !== 'dead').length;
-    $('#execCount').textContent = `${online} activos`;
-    const counts = {};
-    ws.forEach((w) => { counts[w.status] = (counts[w.status] || 0) + 1; });
-    const order = ['busy', 'done', 'idle', 'slow', 'standby', 'dead', 'offline'];
-    setHtml($('#execLegend'), order.filter((s) => counts[s]).map((s) => `<li><span class="swatch" data-s="${s}"></span>${STATUS[s]} <b>${counts[s]}</b></li>`).join(''));
-  }
-
-  const menu = $('#workerMenu');
-  function openMenu(id, anchor) {
-    openMenuId = id;
-    grid.querySelectorAll('.exec.is-open').forEach((c) => c.classList.remove('is-open'));
-    anchor.classList.add('is-open');
-    renderMenu();
-    menu.hidden = false;
-    const r = anchor.getBoundingClientRect();
-    const mw = menu.offsetWidth;
-    const mh = menu.offsetHeight;
-    let left = Math.min(r.left, window.innerWidth - mw - 12);
-    let top = r.bottom + 8;
-    if (top + mh > window.innerHeight - 12) top = Math.max(12, r.top - mh - 8);
-    left = Math.max(12, left);
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-  }
-  function closeMenu() {
-    openMenuId = null;
-    menu.hidden = true;
-    grid.querySelectorAll('.exec.is-open').forEach((c) => c.classList.remove('is-open'));
-  }
-  function renderMenu() {
-    const w = state.workers.find((x) => x.id === openMenuId);
-    if (!w) { closeMenu(); return; }
-    const alive = w.status !== 'dead';
-    setHtml(menu, `
-      <div class="menu-head"><strong>${esc(w.name)}</strong><span class="mono">#${pad(w.id)}</span></div>
-      <dl>
-        <dt>Estado</dt><dd>${STATUS[w.status]}</dd>
-        <dt>Particiones</dt><dd>${w.partitions.length ? w.partitions.map((p) => `P${pad(p)}`).join(', ') : '–'}</dd>
-        <dt>Tareas</dt><dd>${w.tasks}</dd>
-        <dt>Enviado</dt><dd>${fmtBytes(w.bytes)}</dd>
-      </dl>
-      <div class="menu-actions">
-        ${alive ? `
-          <button class="btn btn-sm" type="button" data-act="slow">${icon('turtle')}${w.slow ? 'Volver a velocidad normal' : 'Volverlo straggler'}</button>
-          <button class="btn btn-sm btn-danger" type="button" data-act="kill">${icon('skull')}Tirarlo abajo</button>`
-        : `<button class="btn btn-sm" type="button" data-act="revive">${icon('heart-pulse')}Revivir como reserva</button>`}
-      </div>`);
-  }
-  menu.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-act]');
-    if (!b || openMenuId == null) return;
-    send(`worker:${b.dataset.act}`, { id: openMenuId });
-    closeMenu();
-  });
-  document.addEventListener('pointerdown', (e) => {
-    if (openMenuId == null) return;
-    if (!menu.contains(e.target) && !e.target.closest('.exec')) closeMenu();
-  });
-
-  // ------------------------------------------------------------ panel
-
-  const panel = $('#panel');
-  panel.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-action]');
-    if (!b || b.disabled) return;
-    const a = b.dataset.action;
-    if (a === 'prev') go(-1);
-    else if (a === 'next') go(1);
-    else if (a === 'reduce') send('manual:reduce');
-    else if (a === 'run') send('job:run');
-    else if (a === 'pause') send('job:pause');
-    else if (a === 'reset') send('job:reset');
-    else if (a === 'chaos') send('chaos', { n: 3 });
-    else if (a === 'new-data') send('data:new');
-    else if (a === 'race-hadoop') send('race:run', { mode: 'hadoop' });
-    else if (a === 'race-spark') send('race:run', { mode: 'spark' });
-    else if (a === 'race-reset') send('race:reset');
-  });
-  panel.addEventListener('change', (e) => {
-    if (e.target.id === 'specSwitch') send('speculative', { on: e.target.checked });
-  });
-
-  function renderPanel() {
-    const p = state.phase;
-    const job = state.job;
-    const live = state.workers.filter((w) => w.status !== 'offline' && w.status !== 'dead').length;
-    const running = job && job.running && !job.stopping;
-    const idx = PHASES.findIndex((x) => x.id === p);
-    const nav = (nextLabel = 'Siguiente') => `
-      <div class="panel-nav">
-        <button class="btn btn-ghost btn-sm" type="button" data-action="prev" ${idx === 0 ? 'disabled' : ''}>${icon('arrow-left')}Anterior</button>
-        <button class="btn btn-ghost btn-sm" type="button" data-action="next" ${idx === PHASES.length - 1 ? 'disabled' : ''}>${nextLabel}${icon('arrow-right')}</button>
-      </div>`;
-    const runControls = `
-      <div class="panel-row">
-        ${running
-          ? `<button class="btn btn-primary" type="button" data-action="pause">${icon('pause')}Pausar</button>`
-          : `<button class="btn btn-primary" type="button" data-action="run" ${state.data ? '' : 'disabled'}>${icon('play')}${job ? 'Seguir' : 'Ejecutar'}</button>`}
-        <button class="btn" type="button" data-action="reset">${icon('rotate-ccw')}Reiniciar</button>
-      </div>`;
-    const taskProgress = job ? `
-      <div class="progress">
-        <div class="progress-top"><span>Iteración ${job.iter}${job.stopping ? ' · pausando' : ''}</span><b>${job.done}/${job.total}</b></div>
-        <div class="bar-track"><div class="bar-fill" style="transform:scaleX(${job.total ? job.done / job.total : 0})"></div></div>
-      </div>` : '';
-    let html = '';
-
-    if (p === 'lobby') {
-      html = `
-        <h2>Esperando executors</h2>
-        <p class="panel-text">Cuando estén todos, empezá. El dataset se reparte entre los conectados; los que entren después quedan de reserva.</p>
-        <button class="btn btn-primary btn-lg" type="button" data-action="next" ${live ? '' : 'disabled'}>${icon('play')}Empezar con ${live} executor${live === 1 ? '' : 's'}</button>
-        ${nav()}`;
-    } else if (p === 'map') {
-      const m = state.manual;
-      const done = m ? m.submissions.length : 0;
-      const total = m ? m.owners : 0;
-      html = `
-        <h2>Map a mano</h2>
-        <div class="progress">
-          <div class="progress-top"><span>Enviaron</span><b>${done}/${total}</b></div>
-          <div class="bar-track"><div class="bar-fill" style="transform:scaleX(${total ? done / total : 0})"></div></div>
-        </div>
-        <p class="panel-text">Cada participante asigna un punto al centro más cercano; la web procesa los otros siete. Después, indicá: lado izquierdo elige A; lado derecho elige C. Esperá a que envíen los participantes conectados antes de reducir.</p>
-        <div class="panel-actions">
-          <button class="btn btn-primary btn-lg" type="button" data-action="reduce" ${done ? '' : 'disabled'}>${icon('layers')}Reducir ${done ? `${done} mensaje${done === 1 ? '' : 's'}` : ''}</button>
-          <button class="btn btn-sm btn-ghost" type="button" data-action="new-data">${icon('shuffle')}Repartir de nuevo con los conectados</button>
-        </div>
-        ${nav('Reduce')}`;
-    } else if (p === 'reduce') {
-      html = `
-        <h2>Reduce</h2>
-        <p class="panel-text">Compará las opciones A y C: ambas permiten calcular los centroides, pero C envía solo sumas y cantidades, así que reduce el tráfico de red.</p>
-        <div class="panel-nav">
-          <button class="btn btn-ghost btn-sm" type="button" data-action="prev">${icon('arrow-left')}Anterior</button>
-        </div>`;
-    } else if (p === 'spark') {
-      html = `
-        <h2>Modo Spark</h2>
-        ${runControls}
-        ${taskProgress}
-        <label class="switch"><input type="checkbox" id="specSwitch" ${state.speculative ? 'checked' : ''}><span class="switch-track"></span>Ejecución especulativa</label>
-        <p class="hint">${icon('turtle')}<span>Antes de ejecutar, tocá un executor y volvelo straggler. Probá con y sin ejecución especulativa. Si ya convergió, Reiniciar arranca desde cero.</span></p>
-        ${nav()}`;
-    } else if (p === 'faults') {
-      html = `
-        <h2>Fallos</h2>
-        ${runControls}
-        ${taskProgress}
-        <button class="btn btn-danger" type="button" data-action="chaos" ${state.data ? '' : 'disabled'}>${icon('skull')}Tirar 3 al azar</button>
-        <p class="hint">${icon('wifi-off')}<span>Tocá un executor para tirarlo abajo. Si alguien cierra la pestaña o se le apaga la pantalla, pasa lo mismo de verdad.</span></p>
-        ${nav()}`;
-    } else if (p === 'hadoop') {
-      const busy = Boolean(job);
-      html = `
-        <h2>Hadoop vs Spark</h2>
-        <p class="panel-text">Corré primero Hadoop y después Spark. Los celulares muestran cuándo leen del disco.</p>
-        <div class="panel-actions">
-          <button class="btn btn-primary" type="button" data-action="race-hadoop" ${busy || !state.data ? 'disabled' : ''}>${icon('hard-drive')}Correr con Hadoop</button>
-          <button class="btn btn-primary" type="button" data-action="race-spark" ${busy || !state.data ? 'disabled' : ''}>${icon('zap')}Correr con Spark</button>
-          <button class="btn btn-sm btn-ghost" type="button" data-action="race-reset">${icon('rotate-ccw')}Borrar resultados</button>
-        </div>
-        ${busy ? taskProgress : ''}
-        ${nav()}`;
-    } else if (p === 'code') {
-      html = `
-        <h2>Código</h2>
-        <p class="panel-text">Recorré línea por línea y preguntá a quién le tocó cada parte.</p>
-        ${nav()}`;
-    }
-    setHtml(panel, html);
-  }
-
-  function renderLog() {
-    const fmt = new Intl.DateTimeFormat('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
-    setHtml($('#log'), state.log.slice().reverse().map((l) => `<li data-kind="${l.kind}"><time>${fmt.format(l.t)}</time><span>${esc(l.text)}</span></li>`).join(''));
-  }
-
-  // ------------------------------------------------------------ plot
-
-  const plot = {
-    canvas: $('#plot'),
-    ctx: $('#plot').getContext('2d'),
-    w: 0,
-    dpr: 1,
-    disp: null,
-    from: null,
-    to: null,
-    t0: 0,
-    dur: 900,
-    arrivals: new Map(),
-    colors: {},
-    contrast: false,
-    dirty: true,
-
-    readColors() {
-      const cs = getComputedStyle(document.documentElement);
-      ['c0', 'c1', 'c2', 'c-none', 'line', 'line-strong', 'fg', 'fg-2', 'fg-3', 'bg-raised', 'bad', 'accent'].forEach((k) => {
-        this.colors[k] = cs.getPropertyValue(`--${k}`).trim();
-      });
-      this.contrast = document.documentElement.dataset.theme === 'contrast';
-      this.dirty = true;
-    },
-
-    setCentroids(cs, instant) {
-      const target = cs.map((c) => ({ x: c.x, y: c.y }));
-      if (!this.disp || instant) { this.disp = target; this.to = target; return; }
-      if (this.to && target.every((c, j) => c.x === this.to[j].x && c.y === this.to[j].y)) return;
-      this.from = this.disp.map((c) => ({ ...c }));
-      this.to = target;
-      this.t0 = performance.now();
-    },
-
-    resize() {
-      const rect = this.canvas.parentElement.getBoundingClientRect();
-      this.dpr = Math.min(2, window.devicePixelRatio || 1);
-      this.w = Math.round(rect.width * this.dpr);
-      this.canvas.width = this.w;
-      this.canvas.height = this.w;
-      this.dirty = true;
-    },
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = $('#plot');
+  const mk = (tag, attrs = {}, parent = null) => {
+    const node = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    if (parent) parent.appendChild(node);
+    return node;
   };
-  plot.readColors();
+  const sy = (y) => 100 - y; // the plane grows upward, SVG grows downward
 
-  function layoutPlot() {
-    const view = $('.view-plot');
-    const stage = $('#stage');
-    if (!view.classList.contains('is-active')) return;
-    const cs = getComputedStyle(stage);
-    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
-    const head = $('.plot-head').offsetHeight + $('.plot-legend').offsetHeight + 1.75 * rem + 4;
-    const availH = stage.clientHeight - padY - head;
-    const availW = stage.clientWidth - padX - 19 * rem;
-    const narrow = window.innerWidth <= 960;
-    const size = narrow ? stage.clientWidth - padX : Math.max(280, Math.min(availH, availW));
-    view.style.setProperty('--plot-w', `${Math.floor(size)}px`);
-    plot.resize();
-  }
-  new ResizeObserver(() => layoutPlot()).observe($('#stage'));
-
-  function shapePath(ctx, kind, x, y, r) {
-    ctx.beginPath();
-    if (kind === 0) ctx.arc(x, y, r, 0, Math.PI * 2);
-    else if (kind === 1) { const s = r * 0.9; ctx.rect(x - s, y - s, s * 2, s * 2); }
-    else {
-      const R = r * 1.25;
-      ctx.moveTo(x, y - R);
-      ctx.lineTo(x + R * 0.866, y + R * 0.5);
-      ctx.lineTo(x - R * 0.866, y + R * 0.5);
-      ctx.closePath();
+  // Shapes are centered on the origin so scaling animations pivot on the point.
+  function shape(label, big) {
+    const fill = label < 0 ? 'var(--c-none)' : `var(--c${label})`;
+    const m = big ? 1 : 0;
+    if (label < 0) return mk('circle', { r: 1.25, fill });
+    if (label === 0) return mk('circle', { r: m ? 4.2 : 1.55, fill });
+    if (label === 1) {
+      const h = m ? 3.7 : 1.4;
+      return mk('rect', { x: -h, y: -h, width: 2 * h, height: 2 * h, rx: m ? 0.5 : 0.2, fill });
     }
+    return mk('path', { d: m ? 'M0 -5.2 L4.9 3.5 L-4.9 3.5Z' : 'M0 -2.1 L1.9 1.4 L-1.9 1.4Z', fill, 'stroke-linejoin': 'round' });
   }
 
-  function drawPlot(now) {
-    const { ctx, w, colors: C, contrast } = plot;
-    if (!w || !state) return;
-    const d = plot.dpr;
-    ctx.clearRect(0, 0, w, w);
+  // Layers, bottom to top: grid, trails, points, centers.
+  const gridG = mk('g', { class: 'grid' }, svg);
+  mk('rect', { x: 0, y: 0, width: 100, height: 100, rx: 1.5, class: 'plane' }, gridG);
+  for (let v = 20; v < 100; v += 20) {
+    mk('line', { x1: v, y1: 0, x2: v, y2: 100 }, gridG);
+    mk('line', { x1: 0, y1: v, x2: 100, y2: v }, gridG);
+  }
+  const trailG = mk('g', { class: 'trails' }, svg);
+  const pointsG = mk('g', { class: 'points' }, svg);
+  const centersG = mk('g', { class: 'centers' }, svg);
 
-    const L = w * 0.085;
-    const R = w - w * 0.035;
-    const T = w * 0.035;
-    const B = w - w * 0.085;
-    const X = (v) => L + (v / 100) * (R - L);
-    const Y = (v) => B - (v / 100) * (B - T);
-    const pr = Math.max(3.2 * d, w / 175) * (contrast ? 1.2 : 1);
-    const cr = Math.max(9 * d, w / 46);
-    const lw = (contrast ? 2 : 1) * d;
-    const cc = (j) => C[`c${j}`];
+  const trailEls = [0, 1, 2].map((k) => {
+    const g = mk('g', { class: `trail trail-${k}` }, trailG);
+    return { g, line: mk('polyline', {}, g), dots: mk('g', {}, g), len: -1 };
+  });
+  const centerEls = [0, 1, 2].map((k) => {
+    const g = mk('g', { class: 'center' }, centersG);
+    const body = mk('g', { class: 'center-body' }, g);
+    body.appendChild(shape(k, true));
+    return g;
+  });
+  let centersPlaced = false;
 
-    // grid
-    ctx.lineWidth = d;
-    ctx.strokeStyle = C.line;
-    ctx.fillStyle = C['fg-3'];
-    ctx.font = `${11 * d}px "Atkinson Hyperlegible Mono", ui-monospace, monospace`;
-    for (let v = 0; v <= 100; v += 25) {
-      ctx.beginPath(); ctx.moveTo(X(v), T); ctx.lineTo(X(v), B); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(L, Y(v)); ctx.lineTo(R, Y(v)); ctx.stroke();
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(String(v), X(v), B + 6 * d);
-      ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.fillText(String(v), L - 8 * d, Y(v));
-    }
-    ctx.font = `${12 * d}px "Atkinson Hyperlegible Next", ui-sans-serif, sans-serif`;
-    ctx.fillStyle = C['fg-2'];
-    ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-    ctx.fillText('gasto mensual (miles de $) →', R, w - 8 * d);
-    ctx.save();
-    ctx.translate(14 * d, T);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-    ctx.fillText('visitas por año →', 0, 0);
-    ctx.restore();
+  const pointEls = []; // index-keyed: points keep their slot between states
 
-    // animate centroids
-    let animating = false;
-    if (plot.from && plot.to) {
-      const t = Math.min(1, (now - plot.t0) / plot.dur);
-      const e = easeOut(t);
-      plot.disp = plot.to.map((c, j) => ({ x: plot.from[j].x + (c.x - plot.from[j].x) * e, y: plot.from[j].y + (c.y - plot.from[j].y) * e }));
-      if (t >= 1) plot.from = null;
-      else animating = true;
-    }
-    const cents = plot.disp;
-    const phase = state.phase;
+  function ensurePoint(i) {
+    if (pointEls[i]) return pointEls[i];
+    const g = mk('g', { class: 'pt' }, pointsG);
+    const ring = mk('circle', { class: 'ring', r: 3, visibility: 'hidden' }, g);
+    const body = mk('g', { class: 'pt-body' }, g);
+    return (pointEls[i] = { g, ring, body, label: null, x: null, y: null, ringOn: false });
+  }
 
-    const dot = (x, y, kind, color, r = pr) => {
-      shapePath(ctx, kind, x, y, r);
-      ctx.fillStyle = color;
-      ctx.fill();
-      if (contrast) { ctx.lineWidth = d; ctx.strokeStyle = C.fg; ctx.stroke(); }
-    };
-
-    if ((phase === 'map' || phase === 'reduce') && state.manual) {
-      const startX = w + 40 * d;
-      const startY = w * 0.5;
-      for (const s of state.manual.submissions) {
-        const t0 = plot.arrivals.get(s.id) || 0;
-        const a = easeOut(Math.min(1, (now - t0) / 750));
-        if (a < 1) animating = true;
-        const at = (x, y) => [startX + (X(x) - startX) * a, startY + (Y(y) - startY) * a];
-        ctx.globalAlpha = Math.min(1, a * 1.4);
-        if (s.option === 'A' && s.points) {
-          for (const pt of s.points) { const [x, y] = at(pt.x, pt.y); dot(x, y, pt.c, cc(pt.c)); }
-        } else if (s.option === 'B') {
-          s.avgs.forEach((avg, j) => {
-            if (!avg) return;
-            const [x, y] = at(avg.x, avg.y);
-            shapePath(ctx, j, x, y, pr * 1.9);
-            ctx.setLineDash([3 * d, 3 * d]);
-            ctx.lineWidth = 1.75 * d;
-            ctx.strokeStyle = cc(j);
-            ctx.stroke();
-            ctx.setLineDash([]);
-          });
-        } else if (s.option === 'C') {
-          s.sums.forEach((sum, j) => {
-            if (!sum.n) return;
-            const [x, y] = at(sum.sx / sum.n, sum.sy / sum.n);
-            shapePath(ctx, j, x, y, pr * (0.9 + Math.sqrt(sum.n) * 0.55));
-            ctx.globalAlpha = Math.min(1, a * 1.4) * 0.55;
-            ctx.fillStyle = cc(j);
-            ctx.fill();
-            ctx.globalAlpha = Math.min(1, a * 1.4);
-            ctx.lineWidth = lw;
-            ctx.strokeStyle = cc(j);
-            ctx.stroke();
-          });
+  function renderPlot(s) {
+    const pts = s.points;
+    while (pointEls.length > pts.length) pointEls.pop().g.remove();
+    const showRings = s.phase === 'fail';
+    pts.forEach((pt, i) => {
+      const el = ensurePoint(i);
+      if (el.x !== pt.x || el.y !== pt.y) {
+        el.g.setAttribute('transform', `translate(${pt.x} ${sy(pt.y)})`);
+        el.x = pt.x; el.y = pt.y;
+      }
+      if (el.label !== pt.label) {
+        const first = el.label === null;
+        el.body.replaceChildren(shape(pt.label, false));
+        if (!first) {
+          // Replay the pop animation, with a small random delay so a whole
+          // phone's points do not all flash on the same frame.
+          el.body.classList.remove('pop');
+          el.body.style.animationDelay = `${Math.floor(Math.random() * 260)}ms`;
+          void el.body.getBoundingClientRect();
+          el.body.classList.add('pop');
         }
-        ctx.globalAlpha = 1;
+        el.label = pt.label;
       }
-    } else if (points && (phase === 'spark' || phase === 'faults')) {
-      for (const pt of points) {
-        const j = nearest(pt, cents);
-        dot(X(pt.x), Y(pt.y), j, cc(j));
+      const ringOn = showRings && pt.owner !== pt.home;
+      if (ringOn !== el.ringOn) {
+        el.ring.setAttribute('visibility', ringOn ? 'visible' : 'hidden');
+        el.ringOn = ringOn;
       }
-      // trails
-      const trail = state.trail;
-      if (trail.length > 1) {
-        for (let j = 0; j < cents.length; j++) {
-          ctx.beginPath();
-          trail.forEach((snap, i) => {
-            const x = X(snap[j].x);
-            const y = Y(snap[j].y);
-            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-          });
-          ctx.lineTo(X(cents[j].x), Y(cents[j].y));
-          ctx.strokeStyle = cc(j);
-          ctx.globalAlpha = 0.7;
-          ctx.lineWidth = 2 * d;
-          ctx.lineJoin = 'round';
-          ctx.stroke();
-          ctx.globalAlpha = 1;
-          for (const snap of trail.slice(0, -1)) {
-            ctx.beginPath();
-            ctx.arc(X(snap[j].x), Y(snap[j].y), 2.5 * d, 0, Math.PI * 2);
-            ctx.fillStyle = C['bg-raised'];
-            ctx.fill();
-            ctx.lineWidth = 1.5 * d;
-            ctx.stroke();
-          }
-        }
-      }
-    }
-
-    // reduce: where centroids came from and where they should be
-    const result = phase === 'reduce' && state.manual && state.manual.result;
-    if (result) {
-      result.before.forEach((b, j) => {
-        const c = cents[j];
-        ctx.setLineDash([4 * d, 4 * d]);
-        ctx.strokeStyle = C['fg-3'];
-        ctx.lineWidth = 1.5 * d;
-        ctx.beginPath(); ctx.moveTo(X(b.x), Y(b.y)); ctx.lineTo(X(c.x), Y(c.y)); ctx.stroke();
-        ctx.setLineDash([]);
-        shapePath(ctx, j, X(b.x), Y(b.y), cr * 0.55);
-        ctx.strokeStyle = cc(j);
-        ctx.globalAlpha = 0.5;
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      });
-      if (!plot.from) {
-        result.correct.forEach((g, j) => {
-          if (result.error[j] < 0.75) return;
-          const c = cents[j];
-          ctx.strokeStyle = C.bad;
-          ctx.lineWidth = 2 * d;
-          ctx.beginPath(); ctx.moveTo(X(c.x), Y(c.y)); ctx.lineTo(X(g.x), Y(g.y)); ctx.stroke();
-          shapePath(ctx, j, X(g.x), Y(g.y), cr);
-          ctx.setLineDash([5 * d, 4 * d]);
-          ctx.strokeStyle = C.fg;
-          ctx.stroke();
-          ctx.setLineDash([]);
-          const label = `error ${nf1.format(result.error[j])}`;
-          ctx.font = `500 ${12 * d}px "Atkinson Hyperlegible Mono", ui-monospace, monospace`;
-          const tw = ctx.measureText(label).width;
-          const lx = Math.min(X(g.x) + cr + 8 * d, R - tw - 8 * d);
-          const ly = Y(g.y) - cr - 6 * d;
-          ctx.fillStyle = C.bad;
-          ctx.beginPath();
-          ctx.roundRect(lx - 6 * d, ly - 10 * d, tw + 12 * d, 20 * d, 5 * d);
-          ctx.fill();
-          ctx.fillStyle = C['bg-raised'];
-          ctx.textAlign = 'left';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(label, lx, ly + 0.5 * d);
-        });
-      }
-    }
-
-    // centroids
-    cents.forEach((c, j) => {
-      const x = X(c.x);
-      const y = Y(c.y);
-      shapePath(ctx, j, x, y, cr + 3 * d);
-      ctx.fillStyle = C['bg-raised'];
-      ctx.fill();
-      shapePath(ctx, j, x, y, cr);
-      ctx.fillStyle = cc(j);
-      ctx.fill();
-      ctx.lineWidth = (contrast ? 2.5 : 1.5) * d;
-      ctx.strokeStyle = contrast ? C.fg : C['bg-raised'];
-      ctx.stroke();
     });
 
-    return animating;
+    s.centers.forEach((c, k) => {
+      const g = centerEls[k];
+      g.style.transform = `translate(${c.x}px, ${sy(c.y)}px)`;
+    });
+    if (!centersPlaced) {
+      // First placement must not glide in from the corner: enable the
+      // transition only after the first frame has been painted.
+      centersPlaced = true;
+      requestAnimationFrame(() => requestAnimationFrame(() => svg.classList.add('animated')));
+    }
+
+    trailEls.forEach((t, k) => {
+      const len = s.trail.length;
+      const sig = `${len}:${s.trail[len - 1] ? s.trail[len - 1][k].x : ''}`;
+      if (t.sig === sig) return;
+      t.sig = sig;
+      const path = s.trail.map((step) => step[k]);
+      t.line.setAttribute('points', path.map((p) => `${p.x},${sy(p.y)}`).join(' '));
+      t.dots.replaceChildren(...path.slice(0, -1).map((p) => mk('circle', { cx: p.x, cy: sy(p.y), r: 0.8 })));
+    });
   }
 
-  let lastRace = 0;
-  function frame(now) {
-    if (state && VIEW_OF[state.phase] === 'plot') {
-      if (plot.dirty || plot.from || plot.animating) {
-        plot.dirty = false;
-        plot.animating = drawPlot(now);
+  // ------------------------------------------------------------ compus grid
+
+  const grid = $('#compusGrid');
+  const tiles = new Map(); // id -> { el, sig }
+
+  function renderCompus(s) {
+    $('#compusCount').textContent = String(connectedCount(s));
+    const n = s.phones.length;
+    grid.dataset.size = n <= 12 ? 'm' : n <= 28 ? 's' : n <= 48 ? 'xs' : 'xxs';
+    const seen = new Set();
+    const clickable = s.phase === 'fail';
+    s.phones.forEach((p, idx) => {
+      seen.add(p.id);
+      let t = tiles.get(p.id);
+      if (!t) {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.setAttribute('role', 'listitem');
+        el.innerHTML = `<span class="t-ico"></span><span class="t-num mono"></span><span class="t-name"></span><span class="t-inh mono"></span>`;
+        el.querySelector('.t-num').textContent = pad(p.id);
+        el.addEventListener('click', () => {
+          if (state && state.phase === 'fail' && el.dataset.status !== 'off' && el.dataset.status !== 'offline') send('kill', { id: p.id });
+        });
+        t = { el, sig: '' };
+        tiles.set(p.id, t);
+      }
+      const sig = `${p.name}|${p.status}|${p.inherited}|${clickable}|${canKill(s)}`;
+      if (t.sig !== sig) {
+        t.sig = sig;
+        const st = STATUS[p.status] || STATUS.idle;
+        const el = t.el;
+        el.className = `tile tone-${st.tone}`;
+        el.dataset.status = p.status;
+        el.disabled = !(clickable && p.status !== 'off' && p.status !== 'offline' && canKill(s));
+        el.classList.toggle('is-tappable', !el.disabled);
+        el.querySelector('.t-ico').innerHTML = icon(st.icon);
+        el.querySelector('.t-name').textContent = p.name;
+        el.querySelector('.t-inh').textContent = p.inherited > 0 ? `+${p.inherited}` : '';
+        el.title = `Compu ${pad(p.id)} · ${p.name} · ${st.label}`;
+        el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${clickable && !el.disabled ? '. Tocar para apagar' : ''}`);
+      }
+      if (grid.children[idx] !== t.el) grid.insertBefore(t.el, grid.children[idx] || null);
+    });
+    for (const [id, t] of tiles) {
+      if (!seen.has(id)) { t.el.remove(); tiles.delete(id); }
+    }
+  }
+
+  // ------------------------------------------------------------ rail & stage
+
+  const views = document.querySelectorAll('[data-view]');
+  let shownPhase = null;
+
+  function renderHead(s) {
+    const copy = COPY[s.phase];
+    $('#title').textContent = copy.title;
+    $('#lead').textContent = copy.lead;
+    $('#lead').hidden = !copy.lead;
+    const head = $('#stageHead');
+    head.classList.remove('enter');
+    void head.offsetWidth;
+    head.classList.add('enter');
+    const viewName = s.phase === 'lobby' ? 'lobby' : s.phase === 'end' ? 'end' : 'plot';
+    views.forEach((v) => { v.hidden = v.dataset.view !== viewName; });
+  }
+
+  function renderCard(s) {
+    const copy = COPY[s.phase];
+    const show = s.phase !== 'lobby' && s.phase !== 'end';
+    $('#card').hidden = !show;
+    if (!show) return;
+    $('#cardMain').textContent = copy.main;
+    $('#cardMain').hidden = !copy.main;
+    $('#cardTech').innerHTML = `${icon('layers')}<span>${esc(copy.tech)}</span>`;
+  }
+
+  function renderExtras(s) {
+    // paint: how many phones are done
+    const paint = s.phase === 'paint';
+    $('#progressBlock').hidden = !paint;
+    if (paint) {
+      const { done, total } = s.progress;
+      $('#progressText').textContent = `Listos: ${done} de ${total}`;
+      $('#progressBar').style.width = total ? `${Math.round((100 * done) / total)}%` : '0%';
+    }
+
+    // auto: round counter and bars
+    const auto = s.phase === 'auto';
+    $('#roundBlock').hidden = !auto;
+    if (auto) {
+      $('#roundLabel').textContent = `Vuelta ${s.round}`;
+      $('#roundBusy').textContent = s.busy ? `Pintando: ${s.progress.done} de ${s.progress.total}` : (s.converged ? 'Terminamos' : '');
+      const max = Math.max(...s.shifts, 0.0001);
+      const bars = $('#shiftBars');
+      const want = s.shifts.length;
+      while (bars.children.length < want) bars.appendChild(document.createElement('span'));
+      while (bars.children.length > want) bars.lastChild.remove();
+      s.shifts.forEach((v, i) => {
+        bars.children[i].style.height = `${Math.max(4, Math.round((100 * v) / max))}%`;
+        bars.children[i].classList.toggle('is-last', i === want - 1);
+      });
+    }
+
+    // fail: what happened to the last phone
+    const lf = s.phase === 'fail' && s.lastFail;
+    $('#failCard').hidden = !lf;
+    if (lf) {
+      $('#failText').innerHTML = `Se apagó la compu de <strong>${esc(lf.victim)}</strong>. `
+        + `${lf.points === 1 ? 'Su punto ahora lo pinta' : `Sus ${nf.format(lf.points)} puntos ahora los pinta`} <strong>${esc(lf.heir)}</strong>. `
+        + 'No se perdió nada.';
+    }
+
+    // combine: the highlighted fact, next to the drawing
+    const stat = $('#stat');
+    stat.hidden = s.phase !== 'combine';
+    if (!stat.hidden) {
+      stat.innerHTML = `Por la red viajaron <strong>${plural(s.stats.summaries, 'resumen', 'resúmenes')}</strong>, no <strong>${plural(s.stats.points, 'punto', 'puntos')}</strong>.`;
+    }
+
+    $('#doneBanner').hidden = !(auto && s.converged);
+
+    if (s.phase === 'end') {
+      $('#endNums').textContent = `${plural(s.stats.phones, 'compu', 'compus')} · ${plural(s.stats.points, 'punto', 'puntos')} · ${plural(s.round, 'vuelta', 'vueltas')}`;
+    }
+  }
+
+  // Buttons are rebuilt only when their set or labels change, so a click is never
+  // lost to a re-render in the middle of a press.
+  const sub = $('#actionsSub');
+  const mainBtn = $('#mainBtn');
+  let subSig = '';
+  let mainAction = null;
+
+  function renderActions(s) {
+    const defs = [];
+    if (s.phase === 'auto' || s.phase === 'fail') {
+      if (s.phase === 'fail') {
+        defs.push({ id: 'kill', label: 'Apagar una al azar', ico: 'power-off', disabled: !canKill(s), run: doKill });
+      }
+      defs.push({ id: 'round', label: 'Otra vuelta', ico: 'rotate-ccw', disabled: !canRound(s), run: doRound });
+      if (s.phase === 'auto') {
+        defs.push(s.running
+          ? { id: 'run', label: 'Pausar', ico: 'pause', disabled: false, run: toggleRun }
+          : { id: 'run', label: 'Seguir solo', ico: 'play', disabled: s.converged, run: toggleRun });
+      }
+      if (s.phase === 'fail') {
+        const anyOff = s.phones.some((p) => p.status === 'off') || !!s.lastFail;
+        defs.push({ id: 'revive', label: 'Prender todas', ico: 'power', disabled: !anyOff, run: () => send('revive') });
       }
     }
-    if (state && state.phase === 'hadoop' && state.job && state.job.race && now - lastRace > 100) {
-      lastRace = now;
-      renderRace();
+    if (s.phase === 'end') {
+      defs.push({ id: 'reset', label: 'Reiniciar actividad', ico: 'rotate-ccw', disabled: false, run: () => askReset(true) });
     }
-    requestAnimationFrame(frame);
+    const sig = defs.map((d) => `${d.id}:${d.label}:${d.disabled}`).join('|');
+    if (sig !== subSig) {
+      subSig = sig;
+      sub.replaceChildren(...defs.map((d) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-act';
+        b.disabled = d.disabled;
+        b.innerHTML = `${icon(d.ico)}<span>${esc(d.label)}</span>`;
+        b.addEventListener('click', d.run);
+        return b;
+      }));
+    }
+
+    const main = {
+      lobby: { label: 'Empezar: repartir los puntos', to: 'paint', ico: 'arrow-right' },
+      paint: { label: 'Juntar los resultados', to: 'combine', ico: 'arrow-right' },
+      combine: { label: 'Repetir', to: 'auto', ico: 'repeat' },
+      auto: { label: 'Siguiente: apagar una compu', to: 'fail', ico: 'arrow-right' },
+      fail: { label: 'Cierre', to: 'end', ico: 'arrow-right' },
+      end: null,
+    }[s.phase];
+    mainBtn.hidden = !main;
+    if (main) {
+      mainBtn.innerHTML = `<span>${esc(main.label)}</span>${icon(main.ico)}`;
+      mainBtn.disabled = !canGo(s, main.to);
+      mainBtn.classList.toggle('is-ready', s.phase === 'paint' && s.progress.total > 0 && s.progress.done >= s.progress.total);
+      mainAction = main.to;
+    } else {
+      mainAction = null;
+    }
   }
-  requestAnimationFrame(frame);
-  document.fonts && document.fonts.ready.then(() => { plot.dirty = true; });
+  mainBtn.addEventListener('click', () => { if (state && mainAction && canGo(state, mainAction)) send('phase', { phase: mainAction }); });
+
+  // ------------------------------------------------------------ render
+
+  function render() {
+    const s = state;
+    if (!s) return;
+    if (s.phase !== shownPhase) {
+      shownPhase = s.phase;
+      document.body.dataset.phase = s.phase;
+      renderHead(s);
+    }
+    const addr = (s.publicUrl || '').replace(/^https?:\/\//, '');
+    $('#joinUrl').textContent = addr || '…';
+    $('#lobbyUrl').innerHTML = addr ? esc(addr).replace(/:(\d+)$/, '<wbr>:$1') : '…';
+    $('#overlayUrl').textContent = addr;
+
+    renderStepper(s);
+    renderCompus(s);
+    renderCard(s);
+    renderExtras(s);
+    renderActions(s);
+    if (s.phase !== 'lobby' && s.phase !== 'end') renderPlot(s);
+  }
 })();

@@ -1,10 +1,10 @@
 'use strict';
 
-// Fake executors for rehearsing without a class:
+// Fake phones for rehearsing without a class:
 //   npm run bots -- 25            (25 bots against localhost:3000)
 //   URL=https://... npm run bots -- 10
-// Bots join, assign their points (with a few honest mistakes), pick what
-// to send like a real class would, and run tasks honoring the delays.
+// Bots join, paint by waiting 2–9 s like a person would, and answer every
+// task after 400–900 ms with sums they really compute.
 
 const { io } = require('socket.io-client');
 const km = require('../lib/kmeans');
@@ -15,52 +15,28 @@ const NAMES = ['Ana', 'Bruno', 'Caro', 'Dani', 'Eze', 'Flor', 'Gonza', 'Hernán'
   'Mati', 'Nahue', 'Oli', 'Pau', 'Quimey', 'Rocío', 'Santi', 'Tomi', 'Uriel', 'Vale', 'Wanda', 'Xime', 'Yami', 'Zoe'];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const pick = (weights) => {
-  let r = Math.random() * Object.values(weights).reduce((a, b) => a + b, 0);
-  for (const [k, w] of Object.entries(weights)) { r -= w; if (r <= 0) return k; }
-  return Object.keys(weights)[0];
-};
+const between = (a, b) => a + Math.random() * (b - a);
 
 function bot(i) {
   const name = `${NAMES[i % NAMES.length]}${i >= NAMES.length ? ` ${Math.floor(i / NAMES.length) + 1}` : ''}`;
-  const socket = io(URL, { auth: { role: 'worker', token: `bot-${i}`, name, fresh: true } });
-  const cache = new Map();
-  let submittedFor = null;
-  const queue = [];
-  let busy = false;
-  const cancelled = new Set();
+  const socket = io(URL, { auth: { role: 'worker', token: `bot-${i}`, name } });
+  let state = null;
+  let paintedKey = null;
 
   socket.on('state', async (s) => {
-    const task = s.manual && s.manual.task;
-    if (s.phase !== 'map' || !task || s.manual.submitted || !s.me.alive) return;
-    const key = `${task.pid}:${task.from}`;
-    if (submittedFor === key) return;
-    submittedFor = key;
-    cache.set(task.pid, task.points);
-    await sleep(2000 + Math.random() * 9000);
-    const labels = task.points.map((p) => (Math.random() < 0.08 ? Math.floor(Math.random() * km.K) : km.nearest(p, s.centroids)));
-    socket.emit('manual:submit', { option: pick({ A: 3, B: 4, C: 4 }), labels });
+    state = s;
+    if (s.phase !== 'paint' || s.me.sent || s.me.off || !s.points.length || paintedKey === s.paintKey) return;
+    paintedKey = s.paintKey;
+    await sleep(between(2000, 9000));
+    if (state.phase === 'paint' && !state.me.sent) socket.emit('paint:submit');
   });
 
-  socket.on('cache:clear', () => cache.clear());
-  socket.on('task:cancel', ({ key }) => cancelled.add(key));
-  socket.on('task', (t) => { queue.push(t); run(); });
-
-  async function run() {
-    if (busy) return;
-    busy = true;
-    while (queue.length) {
-      const t = queue.shift();
-      if (t.points && t.cache) cache.set(t.pid, t.points);
-      const pts = t.points || cache.get(t.pid);
-      if (!pts) continue;
-      await sleep(t.readMs + t.computeMs + t.writeMs);
-      if (cancelled.has(t.key)) continue;
-      const { sums, cost } = km.partialStats(pts, t.centroids);
-      socket.emit('task:result', { key: t.key, sums, cost });
-    }
-    busy = false;
-  }
+  socket.on('task', async ({ round, centers }) => {
+    await sleep(between(400, 900));
+    // Uses every point it holds now, inherited ones included.
+    const sums = km.partialSums(state ? state.points : [], centers);
+    socket.emit('task:result', { round, sums });
+  });
   return socket;
 }
 

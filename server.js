@@ -14,25 +14,15 @@ const PORT = Number(process.env.PORT) || 3000;
 const DRIVER_KEY = process.env.DRIVER_KEY || crypto.randomBytes(3).toString('hex');
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://${lanAddress()}:${PORT}`).replace(/\/+$/, '');
 
-const PHASES = ['lobby', 'map', 'reduce', 'spark', 'faults', 'hadoop', 'code'];
-const POINTS_PER_PARTITION = 8;
-const MAX_WORKERS = 150;
-const SPARK_MAX_ITER = 12;
-const RACE_ITER = 5;
-const DISK_READ_MS = 1100;
-const DISK_WRITE_MS = 500;
-const REPLICA_READ_MS = 500;
-const SLOW_EXTRA_MS = 4500;
-const TASK_GRACE_MS = 8000;
-const CONVERGED_SHIFT = 0.05;
-
-// Bytes per message, as if values were 8-byte doubles and longs.
-const BYTES = {
-  A: (n) => n * 20, // x, y and a label per point
-  B: () => km.K * 16, // x̄, ȳ per cluster
-  C: () => km.K * 24, // Σx, Σy, n per cluster
-};
-const SCALE_POINTS = 1_000_000; // "a escala real": points per partition
+const PHASES = ['lobby', 'paint', 'combine', 'auto', 'fail', 'end'];
+const K = km.K;
+const POINTS_PER_PHONE = 6;
+const MAX_PHONES = 150;
+const TASK_TIMEOUT_MS = 2000; // longest wait for a phone's answer
+const ROUND_PAUSE_MS = 700; // pause between rounds in "Seguir solo"
+const EMPTY_ROUND_MS = 600; // length of a round when nobody can be asked
+const CONVERGED_SHIFT = 0.5;
+const MAX_ROUNDS = 15;
 
 // ---------------------------------------------------------------- http
 
@@ -52,9 +42,9 @@ app.use('/fonts/sans', express.static(path.join(__dirname, 'node_modules/@fontso
 app.use('/fonts/mono', express.static(path.join(__dirname, 'node_modules/@fontsource-variable/atkinson-hyperlegible-mono/files'), { maxAge: '7d' }));
 
 const iconSprite = buildIconSprite([
-  'play', 'pause', 'rotate-ccw', 'contrast', 'qr-code', 'maximize', 'x', 'check', 'turtle',
-  'skull', 'heart-pulse', 'zap', 'hard-drive', 'cpu', 'wifi-off', 'arrow-right', 'arrow-left',
-  'chevron-right', 'shuffle', 'send', 'circle-alert', 'git-branch', 'timer', 'database', 'layers',
+  'play', 'pause', 'rotate-ccw', 'contrast', 'qr-code', 'maximize', 'x', 'check', 'skull', 'zap',
+  'arrow-right', 'arrow-left', 'send', 'circle-alert', 'users', 'power', 'power-off', 'repeat',
+  'sparkles', 'monitor', 'smartphone', 'wifi-off', 'layers', 'timer',
 ]);
 app.get('/icons.svg', (_req, res) => res.type('image/svg+xml').send(iconSprite));
 
@@ -69,55 +59,44 @@ app.use(express.static(publicDir, { extensions: ['html'], index: false }));
 
 // ---------------------------------------------------------------- state
 
+// phone: { id, token, name, socket, connected, off, sent, pending, rounds,
+//          hasData, inheritedFrom }   pending = round number awaiting an answer
 const S = {
   phase: 'lobby',
-  workers: new Map(), // token -> worker
-  byId: new Map(), // id -> worker
+  phones: new Map(), // token -> phone
+  byId: new Map(), // id -> phone
   nextId: 1,
-  data: null, // { points, partitions, seed }
-  centroids: cloneCentroids(km.START),
-  trail: [],
-  manual: null, // { submissions: Map<workerId, sub>, result }
-  job: null,
-  history: [],
-  race: { hadoop: null, spark: null },
-  speculative: true,
-  lineage: [],
-  log: [],
+  points: [], // { x, y, owner, home, label }
+  dataVersion: 0, // bumps every time the data is created from scratch
+  centers: cloneCenters(km.START),
+  trail: [cloneCenters(km.START)],
+  round: 0,
+  shifts: [],
+  progress: { done: 0, total: 0 },
+  busy: false,
+  running: false,
+  converged: false,
+  lastFail: null,
+  summaries: 0,
+  roundCenters: null, // centers the round in flight started from
+  roundNo: 0,
+  roundTimer: null,
+  runTimer: null,
 };
 
-function cloneCentroids(cs) {
+function cloneCenters(cs) {
   return cs.map((c) => ({ x: c.x, y: c.y }));
 }
 
-function pushLog(kind, text) {
-  S.log.push({ t: Date.now(), kind, text });
-  if (S.log.length > 80) S.log.shift();
-}
+const connectedOn = () => [...S.byId.values()].filter((p) => p.connected && !p.off);
+const hasPoints = (p) => S.points.some((pt) => pt.owner === p.id);
 
-function liveWorkers() {
-  return [...S.byId.values()].filter((w) => w.alive && w.connected);
-}
-
-function partitionById(pid) {
-  return S.data && S.data.partitions[pid - 1];
-}
-
-function partitionPoints(part) {
-  return S.data.points.slice(part.from, part.to + 1);
-}
-
-function statusOf(w) {
-  if (!w.alive) return 'dead';
-  if (!w.connected) return 'offline';
-  if (w.tasks.size) return w.slow ? 'slow' : 'busy';
-  if (S.phase === 'map' && S.manual) {
-    if (!w.partitions.length) return 'standby';
-    return S.manual.submissions.has(w.id) ? 'done' : 'busy';
-  }
-  if (S.data && !w.partitions.length) return 'standby';
-  if (w.slow) return 'slow';
-  return 'idle';
+function statusOf(p, count) {
+  if (p.off) return 'off';
+  if (!p.connected) return 'offline';
+  if (S.phase === 'lobby') return 'waiting';
+  if (S.phase === 'paint') return p.sent ? 'sent' : 'painting';
+  return p.pending !== null && count > 0 ? 'working' : 'idle';
 }
 
 // ---------------------------------------------------------------- broadcast
@@ -128,526 +107,336 @@ function broadcast() {
   broadcastTimer = setTimeout(() => {
     broadcastTimer = null;
     io.to('drivers').emit('state', driverSnapshot());
-    for (const w of S.byId.values()) {
-      if (w.socket && w.connected) w.socket.emit('state', workerSnapshot(w));
+    const owned = new Map();
+    for (const pt of S.points) {
+      if (!owned.has(pt.owner)) owned.set(pt.owner, []);
+      owned.get(pt.owner).push(pt);
+    }
+    for (const p of S.byId.values()) {
+      if (p.socket && p.connected) p.socket.emit('state', phoneSnapshot(p, owned.get(p.id) || []));
     }
   }, 60);
 }
 
-function driverSnapshot() {
-  const job = S.job;
-  const round = job && job.round;
-  return {
-    phase: S.phase,
-    publicUrl: PUBLIC_URL,
-    workers: [...S.byId.values()].map((w) => ({
-      id: w.id,
-      name: w.name,
-      status: statusOf(w),
-      slow: w.slow,
-      partitions: w.partitions,
-      tasks: w.stats.tasks,
-      bytes: w.stats.bytes,
-    })),
-    data: S.data && {
-      partitions: S.data.partitions.map((p) => ({ id: p.id, owner: p.owner })),
-      points: S.data.points.length,
-      perPartition: POINTS_PER_PARTITION,
-    },
-    centroids: S.centroids,
-    trail: S.trail.slice(-24),
-    history: S.history,
-    job: job && {
-      mode: job.mode,
-      race: job.race,
-      iter: job.iter,
-      maxIter: job.maxIter,
-      running: job.running,
-      stopping: job.stopAfterRound,
-      done: round ? round.results.size : 0,
-      total: S.data ? S.data.partitions.length : 0,
-      roundStartedAt: round ? round.startedAt : null,
-      startedAt: job.startedAt,
-      iterTimes: job.iterTimes,
-    },
-    manual: S.manual && {
-      owners: S.data ? S.data.partitions.filter((p) => S.byId.get(p.owner)?.alive).length : 0,
-      submissions: [...S.manual.submissions.values()].map((s) => ({
-        id: s.workerId, name: s.name, option: s.option, bytes: s.bytes,
-        sums: s.sums, avgs: s.avgs, wrong: s.wrong,
-        points: s.option === 'A' ? s.points.map((p, i) => ({ x: p.x, y: p.y, c: s.labels[i] })) : null,
-      })),
-      result: S.manual.result,
-    },
-    race: S.race,
-    speculative: S.speculative,
-    lineage: S.lineage.slice(-6),
-    log: S.log.slice(-40),
-    config: { diskReadMs: DISK_READ_MS, diskWriteMs: DISK_WRITE_MS, scalePoints: SCALE_POINTS },
-  };
+function progressNow() {
+  if (S.phase === 'paint') {
+    const owners = new Set(S.points.map((pt) => pt.owner));
+    const withPoints = [...S.byId.values()].filter((p) => owners.has(p.id));
+    return { done: withPoints.filter((p) => p.sent).length, total: withPoints.length };
+  }
+  return { ...S.progress };
 }
 
-function workerSnapshot(w) {
-  const parts = w.partitions.map(partitionById).filter(Boolean);
-  let manual = null;
-  if (S.manual && (S.phase === 'map' || S.phase === 'reduce')) {
-    const sub = S.manual.submissions.get(w.id);
-    const part = parts[0];
-    manual = {
-      task: part ? { pid: part.id, from: part.from, to: part.to, points: partitionPoints(part).map(({ x, y }) => ({ x, y })) } : null,
-      submitted: sub ? { option: sub.option, bytes: sub.bytes, wrong: sub.wrong, total: sub.points.length } : null,
-      revealed: Boolean(S.manual.result),
-    };
+function driverSnapshot() {
+  const count = new Map();
+  const inherited = new Map();
+  for (const pt of S.points) {
+    count.set(pt.owner, (count.get(pt.owner) || 0) + 1);
+    if (pt.owner !== pt.home) inherited.set(pt.owner, (inherited.get(pt.owner) || 0) + 1);
   }
   return {
     phase: S.phase,
-    me: {
-      id: w.id,
-      name: w.name,
-      status: statusOf(w),
-      alive: w.alive,
-      slow: w.slow,
-      partitions: parts.map((p) => ({ id: p.id, from: p.from, to: p.to, inherited: w.inherited.has(p.id) })),
-      stats: w.stats,
-    },
-    centroids: S.centroids,
-    manual,
-    job: S.job && { mode: S.job.mode, iter: S.job.iter, maxIter: S.job.maxIter, running: S.job.running, race: S.job.race },
-    hasData: Boolean(S.data),
+    publicUrl: PUBLIC_URL,
+    phones: [...S.byId.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      status: statusOf(p, count.get(p.id) || 0),
+      points: count.get(p.id) || 0,
+      inherited: inherited.get(p.id) || 0,
+    })),
+    points: S.points.map((pt) => ({ x: pt.x, y: pt.y, owner: pt.owner, home: pt.home, label: pt.label })),
+    centers: S.centers,
+    trail: S.trail,
+    round: S.round,
+    shifts: S.shifts,
+    progress: progressNow(),
+    busy: S.busy,
+    running: S.running,
+    converged: S.converged,
+    lastFail: S.lastFail,
+    stats: { phones: S.byId.size, points: S.points.length, summaries: S.summaries },
   };
+}
+
+function phoneSnapshot(p, mine) {
+  // Own points first, then inherited ones; both keep their creation order.
+  const own = mine.filter((pt) => pt.home === p.id);
+  const inherited = mine.filter((pt) => pt.home !== p.id);
+  return {
+    phase: S.phase,
+    me: {
+      id: p.id,
+      name: p.name,
+      off: p.off,
+      sent: p.sent,
+      working: p.pending !== null,
+      rounds: p.rounds,
+      inheritedFrom: p.inheritedFrom,
+    },
+    centers: S.centers,
+    points: [...own, ...inherited].map((pt) => ({ x: pt.x, y: pt.y, label: pt.label })),
+    own: own.length,
+    paintKey: `${S.dataVersion}:${p.id}`,
+    round: S.round,
+    converged: S.converged,
+    totals: { phones: S.byId.size, points: S.points.length },
+  };
+}
+
+// ---------------------------------------------------------------- data
+
+function newPointsFor(p) {
+  const seed = Math.floor(Math.random() * 0x100000000);
+  // Late phones get their points already painted (except during paint).
+  const painted = S.phase !== 'paint' && S.phase !== 'lobby';
+  for (const pt of km.createPhonePoints(seed)) {
+    S.points.push({
+      x: pt.x,
+      y: pt.y,
+      owner: p.id,
+      home: p.id,
+      label: painted ? km.nearest(pt, S.centers) : -1,
+    });
+  }
+  p.hasData = true;
+}
+
+// Anyone who is here but has no points yet (arrived late, or came back
+// after the data was created) gets 6 new ones.
+function seedLatecomers() {
+  if (S.phase === 'lobby' || S.phase === 'end') return;
+  for (const p of [...S.byId.values()].sort((a, b) => a.id - b.id)) {
+    if (p.connected && !p.hasData) newPointsFor(p);
+  }
+}
+
+function createData() {
+  S.points = [];
+  S.dataVersion += 1;
+  S.centers = cloneCenters(km.START);
+  S.trail = [cloneCenters(km.START)];
+  S.round = 0;
+  S.shifts = [];
+  S.progress = { done: 0, total: 0 };
+  S.converged = false;
+  S.lastFail = null;
+  S.summaries = 0;
+  for (const p of S.byId.values()) {
+    p.hasData = false;
+    p.sent = false;
+    p.pending = null;
+    p.rounds = 0;
+    p.off = false;
+    p.inheritedFrom = [];
+  }
+  for (const p of [...S.byId.values()].sort((a, b) => a.id - b.id)) {
+    if (p.connected) newPointsFor(p);
+  }
 }
 
 // ---------------------------------------------------------------- phases
 
 function setPhase(phase) {
   if (!PHASES.includes(phase) || phase === S.phase) return;
-  const from = S.phase;
-  stopJob();
-  if (phase === 'map') {
-    if (from === 'lobby' || !S.data) createData();
-    startManual();
-  }
-  if (phase === 'reduce') {
-    if (!S.manual || !(S.manual.result || S.manual.submissions.size)) return; // nothing to reduce yet
-    if (!S.manual.result) manualReduce();
-  }
-  // Jumping straight to an automatic phase still needs partitions.
-  if (!S.data && ['spark', 'faults', 'hadoop'].includes(phase)) {
+  if (phase === 'lobby') return; // only `reset` goes back to the lobby
+  if (S.phase === 'lobby') {
+    // The only way out of the lobby is to start painting.
+    if (phase !== 'paint' || ![...S.byId.values()].some((p) => p.connected)) return;
+    stopRounds();
     createData();
-    resetCentroids();
+  } else if (phase === 'paint') {
+    return;
+  } else if (S.phase === 'paint' || S.round === 0) {
+    combine();
   }
   S.phase = phase;
-  pushLog('phase', `Fase: ${PHASE_LABELS[phase]}`);
+  if (phase !== 'auto' && phase !== 'fail') stopRunning();
+  seedLatecomers();
   broadcast();
 }
 
-const PHASE_LABELS = {
-  lobby: 'Unirse', map: 'Map a mano', reduce: 'Reduce', spark: 'Modo Spark',
-  faults: 'Fallos', hadoop: 'Hadoop vs Spark', code: 'Código',
-};
-
-function createData() {
-  const live = liveWorkers().sort((a, b) => a.id - b.id);
-  const n = Math.max(1, live.length);
-  S.data = km.createDataset(n, POINTS_PER_PARTITION, Date.now() & 0xffffffff);
-  for (const w of S.byId.values()) {
-    w.partitions = [];
-    w.cache.clear();
-    w.inherited.clear();
-    w.stats = freshStats();
-    if (w.socket) w.socket.emit('cache:clear');
-  }
-  S.data.partitions.forEach((part, i) => {
-    const w = live[i];
-    if (!w) return;
-    part.owner = w.id;
-    w.partitions.push(part.id);
-  });
-  S.lineage = [];
-  S.history = [];
-  S.race = { hadoop: null, spark: null };
-  pushLog('data', `Dataset sintético: ${S.data.points.length} clientes en ${n} particiones de ${POINTS_PER_PARTITION}`);
+// The coordinator merges the summaries and moves each center to the middle
+// of its group. Phones that never sent get their part finished by the server.
+function combine() {
+  const before = S.centers;
+  const { centers, shift } = km.step(S.points, before);
+  for (const pt of S.points) pt.label = km.nearest(pt, before);
+  applyStep(centers, shift);
 }
 
-function resetCentroids() {
-  S.centroids = cloneCentroids(km.START);
-  S.trail = [cloneCentroids(S.centroids)];
-  S.history = [];
+function applyStep(centers, shift) {
+  S.centers = centers;
+  S.trail.push(cloneCenters(centers));
+  S.shifts.push(shift);
+  S.round += 1;
+  S.converged = shift < CONVERGED_SHIFT || S.round >= MAX_ROUNDS;
 }
 
-function startManual() {
-  resetCentroids();
-  S.manual = { submissions: new Map(), result: null };
-  for (const w of S.byId.values()) {
-    // The manual round loads each partition into its executor's memory.
-    w.cache = new Set(w.partitions);
-  }
-}
-
-function manualSubmit(w, payload) {
-  if (S.phase !== 'map' || !S.manual || !w.alive) return;
-  if (S.manual.submissions.has(w.id)) return;
-  const part = partitionById(w.partitions[0]);
-  if (!part) return;
-  const points = partitionPoints(part);
-  const option = payload && payload.option;
-  const labels = payload && payload.labels;
-  if (!['A', 'B', 'C'].includes(option)) return;
-  if (!Array.isArray(labels) || labels.length !== points.length) return;
-  if (!labels.every((l) => Number.isInteger(l) && l >= 0 && l < km.K)) return;
-
-  const sums = km.sumsFromLabels(points, labels);
-  const avgs = sums.map((s) => (s.n ? { x: s.sx / s.n, y: s.sy / s.n } : null));
-  const wrong = points.reduce((acc, p, i) => acc + (km.nearest(p, S.centroids) === labels[i] ? 0 : 1), 0);
-  const bytes = BYTES[option](points.length);
-  S.manual.submissions.set(w.id, {
-    workerId: w.id, name: w.name, option, labels, points, sums, avgs, wrong, bytes, at: Date.now(),
-  });
-  w.stats.bytes += bytes;
-  w.stats.tasks += 1;
-  pushLog('submit', `#${pad(w.id)} ${w.name} envió ${option} · ${formatBytes(bytes)}`);
+function paintSubmit(p) {
+  if (S.phase !== 'paint' || p.sent || p.off || !p.connected) return;
+  const mine = S.points.filter((pt) => pt.owner === p.id);
+  if (!mine.length) return;
+  for (const pt of mine) pt.label = km.nearest(pt, S.centers);
+  p.sent = true;
+  S.summaries += 1;
   broadcast();
 }
 
-// The driver only gets what executors sent. Option B carries averages
-// without counts, so the driver can't weight them: each one counts as a
-// single point. That's the "promedio de promedios" bug, made visible.
-function manualReduce() {
-  const subs = [...S.manual.submissions.values()];
-  const before = cloneCentroids(S.centroids);
-  const exact = Array.from({ length: km.K }, () => ({ sx: 0, sy: 0, n: 0 }));
-  const naive = Array.from({ length: km.K }, () => ({ sx: 0, sy: 0, n: 0 }));
-  const counts = { A: 0, B: 0, C: 0 };
-  const bytes = { A: 0, B: 0, C: 0 };
-  let wrong = 0;
-  let points = 0;
+// ---------------------------------------------------------------- rounds
 
-  for (const s of subs) {
-    counts[s.option] += 1;
-    bytes[s.option] += s.bytes;
-    wrong += s.wrong;
-    points += s.points.length;
-    s.sums.forEach((sum, j) => {
-      exact[j].sx += sum.sx; exact[j].sy += sum.sy; exact[j].n += sum.n;
-      if (s.option === 'B') {
-        if (sum.n) { naive[j].sx += sum.sx / sum.n; naive[j].sy += sum.sy / sum.n; naive[j].n += 1; }
-      } else {
-        naive[j].sx += sum.sx; naive[j].sy += sum.sy; naive[j].n += sum.n;
-      }
-    });
-  }
-
-  const correct = km.centroidsFromSums(exact, before);
-  const after = km.centroidsFromSums(naive, before);
-  const error = after.map((c, j) => Math.sqrt(km.dist2(c, correct[j])));
-  const owners = S.data.partitions.length;
-  S.centroids = after;
-  S.trail.push(cloneCentroids(after));
-  S.manual.result = {
-    before, after, correct, error, counts, bytes, wrong, points,
-    missing: Math.max(0, owners - subs.length),
-    scaled: {
-      A: BYTES.A(SCALE_POINTS), B: BYTES.B(), C: BYTES.C(),
-    },
-  };
-  pushLog('reduce', `Reduce: ${subs.length} mensajes, ${formatBytes(bytes.A + bytes.B + bytes.C)} por la red`);
+// `converged` only blocks new rounds in `auto`: in `fail` one more round is
+// the whole point (watching the survivors carry on), see the note in the report.
+function canRound() {
+  return (S.phase === 'auto' || S.phase === 'fail') && !S.busy && S.round >= 1
+    && !(S.converged && S.phase === 'auto');
 }
 
-// ---------------------------------------------------------------- jobs
-
-function freshStats() {
-  return { tasks: 0, bytes: 0, inherited: 0, speculative: 0 };
-}
-
-function startJob(mode, { race = false } = {}) {
-  if (!S.data) return;
-  if (S.job) {
-    // Resume a paused job instead of starting over.
-    if (!S.job.running && S.job.mode === mode && !race) {
-      S.job.running = true;
-      S.job.stopAfterRound = false;
-      if (!S.job.round) nextIteration();
-      broadcast();
-    }
-    return;
+function startRound() {
+  if (!canRound()) return;
+  S.busy = true;
+  S.roundNo = S.round + 1;
+  S.roundCenters = cloneCenters(S.centers);
+  const targets = connectedOn().filter(hasPoints);
+  S.progress = { done: 0, total: targets.length };
+  for (const p of targets) {
+    p.pending = S.roundNo;
+    p.socket.emit('task', { round: S.roundNo, centers: S.roundCenters });
   }
-  if (race) {
-    // A fair race: same start, no stragglers, nothing cached.
-    resetCentroids();
-    for (const w of S.byId.values()) w.slow = false;
-    for (const w of S.byId.values()) {
-      w.cache.clear();
-      if (w.socket) w.socket.emit('cache:clear');
-    }
-  }
-  S.job = {
-    mode, race, iter: race ? 0 : S.history.length, running: true, stopAfterRound: false,
-    maxIter: race ? RACE_ITER : SPARK_MAX_ITER, startedAt: Date.now(), iterTimes: [], round: null,
-  };
-  if (S.job.iter >= S.job.maxIter) S.job.maxIter = S.job.iter + SPARK_MAX_ITER;
-  pushLog('job', race
-    ? `Carrera: ${RACE_ITER} iteraciones en modo ${mode === 'hadoop' ? 'Hadoop MapReduce' : 'Spark'}`
-    : 'Job K-Means lanzado');
-  nextIteration();
+  S.roundTimer = setTimeout(finishRound, targets.length ? TASK_TIMEOUT_MS : EMPTY_ROUND_MS);
   broadcast();
 }
 
-function nextIteration() {
-  const job = S.job;
-  if (!job || !job.running) return;
-  job.iter += 1;
-  job.round = {
-    iter: job.iter,
-    startedAt: Date.now(),
-    centroids: cloneCentroids(S.centroids),
-    attempts: new Map(), // pid -> task[]
-    results: new Map(), // pid -> { sums, cost }
-    durations: [],
-  };
-  for (const part of S.data.partitions) {
-    job.round.attempts.set(part.id, []);
-    launchTask(part, ownerOrReassign(part, 'sin ejecutor'));
+// The server is the authority: it labels and averages by itself with the
+// centers the round started from. Phone answers only drive the progress.
+function finishRound() {
+  if (!S.busy) return;
+  clearTimeout(S.roundTimer);
+  S.roundTimer = null;
+  for (const p of S.byId.values()) p.pending = null;
+  const before = S.roundCenters;
+  const { centers, shift } = km.step(S.points, before);
+  for (const pt of S.points) pt.label = km.nearest(pt, before);
+  applyStep(centers, shift);
+  S.busy = false;
+  if (S.running) {
+    if (S.converged) S.running = false;
+    else S.runTimer = setTimeout(() => { S.runTimer = null; if (S.running) startRound(); }, ROUND_PAUSE_MS);
   }
+  broadcast();
 }
 
-let taskSeq = 0;
-function launchTask(part, w, speculative = false) {
-  const job = S.job;
-  if (!job || !job.round) return;
-  if (!w) {
-    pushLog('warn', `P${pad(part.id)} sin executors disponibles`);
-    return;
-  }
-  const round = job.round;
-  const hadoop = job.mode === 'hadoop';
-  const needsRead = hadoop || !w.cache.has(part.id);
-  const task = {
-    key: `${round.iter}.${part.id}.${++taskSeq}`,
-    pid: part.id,
-    iter: round.iter,
-    workerId: w.id,
-    speculative,
-    startedAt: Date.now(),
-    readMs: needsRead ? (speculative ? REPLICA_READ_MS : DISK_READ_MS) : 0,
-    computeMs: 350 + Math.round(Math.random() * 550) + (w.slow ? SLOW_EXTRA_MS : 0),
-    writeMs: hadoop ? DISK_WRITE_MS : 0,
-  };
-  task.timer = setTimeout(() => taskTimedOut(task), task.readMs + task.computeMs + task.writeMs + TASK_GRACE_MS);
-  w.tasks.set(task.key, task);
-  round.attempts.get(part.id).push(task);
-  if (speculative) w.stats.speculative += 1;
-  w.socket.emit('task', {
-    key: task.key,
-    pid: part.id,
-    iter: round.iter,
-    mode: job.mode,
-    speculative,
-    centroids: round.centroids,
-    points: needsRead ? partitionPoints(part).map(({ x, y }) => ({ x, y })) : null,
-    cache: !hadoop,
-    readMs: task.readMs,
-    computeMs: task.computeMs,
-    writeMs: task.writeMs,
-  });
+// A phone stopped being awaited (answered, went off or disconnected).
+function clearPending(p) {
+  if (p.pending === null) return;
+  p.pending = null;
+  if (S.busy && ![...S.byId.values()].some((q) => q.pending !== null)) finishRound();
 }
 
-function cancelTask(task, notify = true, reason = 'stop') {
-  clearTimeout(task.timer);
-  const w = S.byId.get(task.workerId);
-  if (!w) return;
-  w.tasks.delete(task.key);
-  if (notify && w.socket) w.socket.emit('task:cancel', { key: task.key, reason });
-}
-
-function taskResult(w, payload) {
-  const task = payload && w.tasks.get(payload.key);
-  if (!task) return;
-  clearTimeout(task.timer);
-  w.tasks.delete(task.key);
-  const job = S.job;
-  const round = job && job.round;
-  if (!w.alive || !round || round.iter !== task.iter || round.results.has(task.pid)) {
-    broadcast();
-    return;
-  }
+function taskResult(p, payload) {
+  if (!S.busy || p.pending === null || !payload || typeof payload !== 'object') return;
+  if (payload.round !== p.pending) return;
   const sums = payload.sums;
-  const cost = Number(payload.cost);
-  const valid = Array.isArray(sums) && sums.length === km.K
-    && sums.every((s) => s && [s.sx, s.sy, s.n].every(Number.isFinite)) && Number.isFinite(cost);
+  const valid = Array.isArray(sums) && sums.length === K
+    && sums.every((s) => s && typeof s === 'object'
+      && Number.isFinite(s.sx) && Number.isFinite(s.sy) && Number.isInteger(s.n) && s.n >= 0);
   if (!valid) return;
-
-  round.results.set(task.pid, { sums, cost });
-  round.durations.push(Date.now() - task.startedAt);
-  w.stats.tasks += 1;
-  w.stats.bytes += BYTES.C();
-  if (job.mode === 'spark') w.cache.add(task.pid);
-
-  for (const other of round.attempts.get(task.pid)) {
-    if (other !== task && w.id !== other.workerId) cancelTask(other, true, 'spec');
-  }
-  if (task.speculative) {
-    const original = round.attempts.get(task.pid)[0];
-    pushLog('spec', `P${pad(task.pid)}: la copia en #${pad(w.id)} le ganó a #${pad(original.workerId)}`);
-  }
-  if (round.results.size === S.data.partitions.length) finishIteration();
+  p.rounds += 1;
+  S.progress.done += 1;
+  S.summaries += 1;
+  p.pending = null;
+  if (![...S.byId.values()].some((q) => q.pending !== null)) finishRound();
   else broadcast();
 }
 
-function finishIteration() {
-  const job = S.job;
-  const round = job.round;
-  const totals = Array.from({ length: km.K }, () => ({ sx: 0, sy: 0, n: 0 }));
-  let cost = 0;
-  for (const r of round.results.values()) {
-    r.sums.forEach((s, j) => { totals[j].sx += s.sx; totals[j].sy += s.sy; totals[j].n += s.n; });
-    cost += r.cost;
-  }
-  const next = km.centroidsFromSums(totals, round.centroids);
-  const shift = Math.max(...next.map((c, j) => Math.sqrt(km.dist2(c, round.centroids[j]))));
-  const ms = Date.now() - round.startedAt;
-  S.centroids = next;
-  S.trail.push(cloneCentroids(next));
-  if (S.trail.length > 60) S.trail.shift();
-  job.iterTimes.push(ms);
-  if (!job.race) S.history.push({ iter: round.iter, cost, ms, shift });
-  job.round = null;
-
-  const converged = !job.race && shift < CONVERGED_SHIFT;
-  if (converged) pushLog('done', `Convergió en la iteración ${round.iter} (costo ${Math.round(cost)})`);
-  if (converged || job.iter >= job.maxIter || job.stopAfterRound) {
-    if (job.race) {
-      S.race[job.mode] = { iterTimes: job.iterTimes, total: job.iterTimes.reduce((a, b) => a + b, 0) };
-      pushLog('done', `${job.mode === 'hadoop' ? 'Hadoop' : 'Spark'}: ${RACE_ITER} iteraciones en ${(S.race[job.mode].total / 1000).toFixed(1)} s`);
-    }
-    if (job.stopAfterRound && !converged && job.iter < job.maxIter) {
-      job.running = false;
-      job.stopAfterRound = false;
-    } else {
-      S.job = null;
-    }
-  } else {
-    setTimeout(nextIteration, 450);
-  }
+function setRunning(on) {
+  if (!on) { stopRunning(); broadcast(); return; }
+  if (S.phase !== 'auto' && S.phase !== 'fail') return;
+  if (S.converged && S.phase === 'auto') return;
+  S.running = true;
+  if (!S.busy && !S.runTimer) startRound();
   broadcast();
 }
 
-function stopJob() {
-  if (!S.job) return;
-  const round = S.job.round;
-  if (round) for (const list of round.attempts.values()) for (const t of list) cancelTask(t);
-  S.job = null;
+function stopRunning() {
+  S.running = false;
+  clearTimeout(S.runTimer);
+  S.runTimer = null;
 }
 
-function taskTimedOut(task) {
-  const w = S.byId.get(task.workerId);
-  const round = S.job && S.job.round;
-  if (!w || !w.tasks.has(task.key)) return;
-  w.tasks.delete(task.key);
-  if (!round || round.iter !== task.iter || round.results.has(task.pid)) return;
-  pushLog('warn', `#${pad(w.id)} no respondió a tiempo (P${pad(task.pid)})`);
-  const part = partitionById(task.pid);
-  const live = round.attempts.get(task.pid).some((t) => t !== task && S.byId.get(t.workerId)?.tasks.has(t.key));
-  if (!live) launchTask(part, reassign(part, 'sin respuesta', w.id));
-  broadcast();
+function stopRounds() {
+  stopRunning();
+  clearTimeout(S.roundTimer);
+  S.roundTimer = null;
+  S.busy = false;
+  for (const p of S.byId.values()) p.pending = null;
 }
-
-// Speculative execution: once half the partitions are back, relaunch the
-// ones that take far longer than the median on an idle executor.
-setInterval(() => {
-  const round = S.job && S.job.round;
-  if (!round || !S.speculative || !S.data) return;
-  const total = S.data.partitions.length;
-  if (round.results.size < Math.ceil(total * 0.5) || !round.durations.length) return;
-  const sorted = [...round.durations].sort((a, b) => a - b);
-  const median = sorted[Math.floor(sorted.length / 2)];
-  const threshold = Math.max(1500, median * 2.2);
-  const now = Date.now();
-  for (const [pid, attempts] of round.attempts) {
-    if (round.results.has(pid) || !attempts.length || attempts.some((t) => t.speculative)) continue;
-    const primary = attempts[attempts.length - 1];
-    if (now - primary.startedAt - primary.readMs < threshold) continue;
-    const idle = liveWorkers()
-      .filter((w) => !w.tasks.size && !w.slow && w.id !== primary.workerId)
-      .sort((a, b) => a.stats.tasks - b.stats.tasks)[0];
-    if (!idle) return;
-    pushLog('spec', `P${pad(pid)} tarda demasiado en #${pad(primary.workerId)}: copia especulativa en #${pad(idle.id)}`);
-    launchTask(partitionById(pid), idle, true);
-    broadcast();
-  }
-}, 300);
 
 // ---------------------------------------------------------------- faults
 
-function ownerOrReassign(part, reason) {
-  const owner = S.byId.get(part.owner);
-  if (owner && owner.alive && owner.connected) return owner;
-  return reassign(part, reason, part.owner);
-}
-
-// Lineage: a lost partition isn't copied from anywhere, it's recomputed
-// from the source by replaying the transformations that built it.
-function reassign(part, reason, excludeId) {
-  const target = liveWorkers()
-    .filter((w) => w.id !== excludeId)
-    .sort((a, b) => (a.partitions.length - b.partitions.length) || (a.tasks.size - b.tasks.size) || (a.id - b.id))[0];
-  if (!target) return null;
-  const prev = S.byId.get(part.owner);
-  if (prev) {
-    prev.partitions = prev.partitions.filter((p) => p !== part.id);
-    prev.cache.delete(part.id);
+function kill(id) {
+  if (S.phase !== 'fail') return;
+  const alive = connectedOn();
+  let victim;
+  if (id === undefined) {
+    const options = alive.filter((p) => hasPoints(p) && alive.length > 1);
+    victim = options[Math.floor(Math.random() * options.length)];
+  } else {
+    victim = S.byId.get(id);
   }
-  part.owner = target.id;
-  target.partitions.push(part.id);
-  target.inherited.add(part.id);
-  target.stats.inherited += 1;
-  const event = { t: Date.now(), pid: part.id, from: prev ? prev.id : null, to: target.id, reason };
-  S.lineage.push(event);
-  if (S.lineage.length > 30) S.lineage.shift();
-  pushLog('lineage', `P${pad(part.id)} perdida${prev ? ` en #${pad(prev.id)}` : ''} (${reason}): se recalcula desde el origen en #${pad(target.id)}`);
-  if (target.socket) target.socket.emit('inherited', { pid: part.id, from: prev ? prev.id : null, reason });
-  return target;
-}
+  if (!victim || victim.off) return;
+  const heirs = alive.filter((p) => p !== victim);
+  if (!heirs.length) return; // someone has to be left to do the work
+  const load = new Map(heirs.map((p) => [p.id, 0]));
+  for (const pt of S.points) if (load.has(pt.owner)) load.set(pt.owner, load.get(pt.owner) + 1);
+  const heir = heirs.sort((a, b) => (load.get(a.id) - load.get(b.id)) || (a.id - b.id))[0];
 
-function failWorker(w, reason) {
-  const round = S.job && S.job.round;
-  const lost = [...w.tasks.values()];
-  for (const t of lost) cancelTask(t, false);
-  if (!S.data) return;
-  for (const pid of [...w.partitions]) {
-    const part = partitionById(pid);
-    const t = lost.find((x) => x.pid === pid);
-    if (S.phase === 'map' && S.manual && S.manual.submissions.has(w.id)) continue;
-    if (S.job || reason === 'caído') {
-      const target = reassign(part, reason, w.id);
-      if (round && t && !round.results.has(pid)) launchTask(part, target);
-    }
+  victim.off = true;
+  const moved = S.points.filter((pt) => pt.owner === victim.id);
+  for (const pt of moved) pt.owner = heir.id;
+  S.lastFail = { victim: victim.name, heir: heir.name, points: moved.length };
+  if (moved.length) {
+    if (!heir.inheritedFrom.includes(victim.name)) heir.inheritedFrom.push(victim.name);
+    heir.socket.emit('inherit', { from: victim.name, count: moved.length, total: load.get(heir.id) + moved.length });
   }
-  // Speculative copies this executor was running for others.
-  if (round) {
-    for (const t of lost) {
-      if (w.partitions.includes(t.pid) || round.results.has(t.pid)) continue;
-      const others = round.attempts.get(t.pid).some((x) => x !== t && S.byId.get(x.workerId)?.tasks.has(x.key));
-      if (!others) launchTask(partitionById(t.pid), ownerOrReassign(partitionById(t.pid), reason));
-    }
+  clearPending(victim);
+  broadcast();
+}
+
+function revive() {
+  for (const pt of S.points) pt.owner = pt.home;
+  for (const p of S.byId.values()) {
+    p.off = false;
+    p.inheritedFrom = [];
   }
+  S.lastFail = null;
+  broadcast();
 }
 
-function killWorker(id) {
-  const w = S.byId.get(id);
-  if (!w || !w.alive) return;
-  w.alive = false;
-  pushLog('kill', `#${pad(w.id)} ${w.name} se cayó`);
-  if (w.socket) w.socket.emit('killed');
-  failWorker(w, 'caído');
-}
-
-function reviveWorker(id) {
-  const w = S.byId.get(id);
-  if (!w || w.alive) return;
-  w.alive = true;
-  w.slow = false;
-  w.cache.clear();
-  pushLog('revive', `#${pad(w.id)} volvió como executor de reserva`);
+function reset() {
+  stopRounds();
+  // Phones that already left do not come back to the next class.
+  for (const p of [...S.byId.values()]) {
+    if (!p.connected) { S.byId.delete(p.id); S.phones.delete(p.token); }
+  }
+  S.phase = 'lobby';
+  S.points = [];
+  S.dataVersion += 1;
+  S.centers = cloneCenters(km.START);
+  S.trail = [cloneCenters(km.START)];
+  S.round = 0;
+  S.shifts = [];
+  S.progress = { done: 0, total: 0 };
+  S.converged = false;
+  S.lastFail = null;
+  S.summaries = 0;
+  for (const p of S.byId.values()) {
+    p.hasData = false;
+    p.sent = false;
+    p.off = false;
+    p.rounds = 0;
+    p.inheritedFrom = [];
+  }
+  broadcast();
 }
 
 // ---------------------------------------------------------------- sockets
@@ -655,103 +444,75 @@ function reviveWorker(id) {
 io.on('connection', (socket) => {
   const auth = socket.handshake.auth || {};
   if (auth.role === 'driver') return attachDriver(socket, auth);
-  if (auth.role === 'worker') return attachWorker(socket, auth);
+  if (auth.role === 'worker') return attachPhone(socket, auth);
   socket.disconnect(true);
 });
 
 function attachDriver(socket, auth) {
   if (auth.key !== DRIVER_KEY) {
-    socket.emit('auth:error', 'Clave de driver incorrecta');
+    socket.emit('auth:error', 'Clave de coordinador incorrecta');
     socket.disconnect(true);
     return;
   }
   socket.join('drivers');
-  socket.emit('data', S.data && S.data.points);
   socket.emit('state', driverSnapshot());
 
+  // A malformed payload or a bug in one handler must never take the server down.
   const on = (event, fn) => socket.on(event, (payload) => {
-    const hadData = S.data;
-    fn(payload || {});
-    if (S.data !== hadData) io.to('drivers').emit('data', S.data && S.data.points);
-    broadcast();
+    try {
+      fn(payload && typeof payload === 'object' ? payload : {});
+    } catch (err) {
+      console.error(`driver event "${event}" failed:`, err);
+    }
   });
 
-  on('phase', ({ phase }) => setPhase(phase));
-  on('manual:reduce', () => {
-    if (S.phase === 'map' && S.manual && S.manual.submissions.size) setPhase('reduce');
+  on('phase', ({ phase }) => { if (typeof phase === 'string') setPhase(phase); });
+  on('round', () => startRound());
+  on('run', ({ on: value }) => { if (typeof value === 'boolean') setRunning(value); });
+  on('kill', ({ id }) => {
+    if (id === undefined || id === null) kill(undefined);
+    else if (Number.isInteger(id)) kill(id);
   });
-  on('job:run', () => startJob('spark'));
-  on('job:pause', () => { if (S.job) S.job.stopAfterRound = true; });
-  on('job:reset', () => { stopJob(); resetCentroids(); pushLog('job', 'Centroides reiniciados'); });
-  on('speculative', ({ on: value }) => { S.speculative = Boolean(value); });
-  on('worker:kill', ({ id }) => killWorker(id));
-  on('worker:revive', ({ id }) => reviveWorker(id));
-  on('worker:slow', ({ id }) => {
-    const w = S.byId.get(id);
-    if (!w) return;
-    w.slow = !w.slow;
-    pushLog('slow', w.slow ? `#${pad(w.id)} ahora es un straggler` : `#${pad(w.id)} volvió a su velocidad`);
-  });
-  on('chaos', ({ n }) => {
-    const victims = liveWorkers().filter((w) => w.partitions.length).sort(() => Math.random() - 0.5).slice(0, Math.max(1, Math.min(10, n | 0)));
-    victims.forEach((w) => killWorker(w.id));
-  });
-  on('race:run', ({ mode }) => {
-    if (S.job) return;
-    if (mode === 'hadoop' || mode === 'spark') startJob(mode, { race: true });
-  });
-  on('race:reset', () => { stopJob(); S.race = { hadoop: null, spark: null }; });
-  on('data:new', () => {
-    stopJob();
-    createData();
-    if (S.phase === 'map' || S.phase === 'reduce') { S.phase = 'map'; startManual(); } else resetCentroids();
-  });
+  on('revive', () => revive());
+  on('reset', () => reset());
 }
 
-function attachWorker(socket, auth) {
+function attachPhone(socket, auth) {
   const token = typeof auth.token === 'string' ? auth.token.slice(0, 64) : '';
   if (!token) { socket.disconnect(true); return; }
-  let w = S.workers.get(token);
-  if (!w) {
-    if (S.byId.size >= MAX_WORKERS) {
-      socket.emit('join:error', 'El clúster está lleno');
+  let p = S.phones.get(token);
+  if (!p) {
+    if (S.byId.size >= MAX_PHONES) {
+      socket.emit('join:error', 'El aula está llena');
       socket.disconnect(true);
       return;
     }
     const id = S.nextId++;
-    w = {
-      id, token, name: cleanName(auth.name) || `Executor ${id}`, socket: null, connected: false,
-      alive: true, slow: false, partitions: [], cache: new Set(), inherited: new Set(),
-      tasks: new Map(), stats: freshStats(),
+    p = {
+      id, token, name: cleanName(auth.name) || `Compu ${id}`, socket: null, connected: false,
+      off: false, sent: false, pending: null, rounds: 0, hasData: false, inheritedFrom: [],
     };
-    S.workers.set(token, w);
-    S.byId.set(id, w);
-    pushLog('join', `#${pad(id)} ${w.name} se unió${S.data ? ' (reserva)' : ''}`);
+    S.phones.set(token, p);
+    S.byId.set(id, p);
   } else if (cleanName(auth.name)) {
-    w.name = cleanName(auth.name);
+    p.name = cleanName(auth.name);
   }
-  if (w.socket && w.socket !== socket) w.socket.disconnect(true);
-  w.socket = socket;
-  w.connected = true;
-  // A reconnecting phone lost its in-memory cache along with the page.
-  if (auth.fresh) w.cache.clear();
-  socket.emit('state', workerSnapshot(w));
+  if (p.socket && p.socket !== socket) p.socket.disconnect(true);
+  p.socket = socket;
+  p.connected = true;
+  seedLatecomers();
   broadcast();
 
-  socket.on('manual:submit', (payload) => manualSubmit(w, payload));
-  socket.on('task:result', (payload) => taskResult(w, payload));
-  socket.on('rename', (name) => {
-    const n = cleanName(name);
-    if (n) { w.name = n; broadcast(); }
-  });
+  const safe = (fn) => (payload) => {
+    try { fn(payload); } catch (err) { console.error('phone event failed:', err); }
+  };
+  socket.on('paint:submit', safe(() => paintSubmit(p)));
+  socket.on('task:result', safe((payload) => taskResult(p, payload)));
   socket.on('disconnect', () => {
-    if (w.socket !== socket) return;
-    w.connected = false;
-    w.socket = null;
-    if (S.job && w.alive) {
-      pushLog('offline', `#${pad(w.id)} perdió conexión`);
-      failWorker(w, 'desconectado');
-    }
+    if (p.socket !== socket) return;
+    p.connected = false;
+    p.socket = null;
+    clearPending(p);
     broadcast();
   });
 }
@@ -761,16 +522,6 @@ function attachWorker(socket, auth) {
 function cleanName(name) {
   if (typeof name !== 'string') return '';
   return name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 16);
-}
-
-function pad(n) {
-  return String(n).padStart(2, '0');
-}
-
-function formatBytes(b) {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function lanAddress() {

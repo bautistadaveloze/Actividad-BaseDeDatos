@@ -51,7 +51,8 @@
   op-ti-mi-za-do-res pre-di-ca-do pre-di-ca-dos con-ve-xen-cia e-va-lua-dor
   re-la-cio-na-les re-la-cio-nal con-ver-gen-cia es-ta-dis-ti-co
   es-ta-dis-ti-cos car-di-na-li-dad di-men-sio-na-li-dad trans-for-ma-dor
-  trans-for-ma-do-res es-ti-ma-dor es-ti-ma-do-res}
+  trans-for-ma-do-res es-ti-ma-dor es-ti-ma-do-res con-sis-ten-cia
+  re-pli-ca-ci-on in-de-xa-ci-on trans-ac-cio-nal des-nor-ma-li-za-ci-on}
 
 \begin{document}
 
@@ -70,7 +71,7 @@
 {\LARGE\bfseries Procesamiento distribuido y \textit{machine learning}\\
 sobre datos masivos con Apache Spark MLlib\par}
 \vspace{0.5cm}
-{\large Arquitectura, Algoritmos Iterativos y Optimización a Gran Escala\par}
+{\large Modelo de Datos, Arquitectura Interna, Algoritmos Iterativos y Optimización\par}
 \vfill
 {\large\bfseries Integrantes\par}
 \vspace{0.25cm}
@@ -94,63 +95,56 @@ Teodoro Reyna
 \pagestyle{plain}
 
 \begin{abstract}
-Cuando el volumen de un conjunto de datos excede las capacidades de almacenamiento y cómputo de un único servidor, su análisis exige estrategias de particionamiento horizontal y procesamiento paralelo en clúster. Este informe examina los principios arquitectónicos y algorítmicos del procesamiento distribuido moderno, analizando la transición desde el paradigma MapReduce hacia el modelo en memoria de Apache Spark, sus RDD, DataFrames y el optimizador Catalyst. Se profundiza en el funcionamiento de Spark MLlib para el aprendizaje automático sobre datos masivos, adoptando el algoritmo de agrupamiento K-Means como caso de estudio representativo de algoritmos iterativos. Se analizan formalmente la paralelización mediante estadísticos suficientes, la agregación jerárquica en árbol (\textit{treeAggregate}), las canalizaciones (\textit{ML Pipelines}), los mecanismos de tolerancia a fallos por linaje y la mitigación de tareas rezagadas mediante ejecución especulativa. Asimismo, se contrasta el procesamiento analítico distribuido con las bases de datos relacionales tradicionales y se detallan las técnicas críticas de optimización del motor (Project Tungsten, gestión de memoria fuera de la JVM) y la resolución de cuellos de botella por sesgo de datos (\textit{data skew}) y operaciones de \textit{shuffle}.
+Cuando el volumen de un conjunto de datos excede las capacidades físicas de un único servidor, su tratamiento exige estrategias de particionamiento horizontal y cómputo paralelo en clúster. Este informe analiza integralmente el procesamiento distribuido moderno en Apache Spark y su biblioteca de aprendizaje automático, MLlib. Se examina formalmente el modelo de datos (RDDs, DataFrames estructurados bajo esquemas \textit{StructType} y formatos columnares particionados en disco como Parquet), la arquitectura interna de ejecución (distribución por particiones, ausencia deliberada de replicación en memoria y resiliencia por linaje determinista, técnicas de aceleración por poda y filtros de Bloom en lugar de índices B-Tree, y consistencia mediante protocolos de confirmación atómica y capas transaccionales). Asimismo, se establece una comparación fundamentada con el modelo relacional tradicional, delimitando casos de uso analíticos reales y escenarios donde no conviene utilizar la tecnología. Finalmente, se presentan ejemplos de operaciones concretas (consultas declarativas, escrituras particionadas y canalizaciones completas de ML), formalizando la paralelización del algoritmo K-Means con agregación jerárquica en árbol (\textit{treeAggregate}) y las optimizaciones de bajo nivel de Catalyst y Project Tungsten.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Apache Spark, MLlib, MapReduce, Hadoop, K-Means, procesamiento distribuido, RDD, tolerancia a fallos, big data, Catalyst, Project Tungsten, treeAggregate.
+Apache Spark, MLlib, modelo de datos, arquitectura distribuida, DataFrames, RDD, consistencia, indexación, modelo relacional, K-Means, Catalyst, Project Tungsten, treeAggregate.
 \end{IEEEkeywords}
 
 \section{Introducción}
 
-El volumen de datos que generan hoy las organizaciones (registros transaccionales, eventos de aplicaciones, telemetría de sensores y flujos de interacción en tiempo real) crece a un ritmo superior a la capacidad de una única máquina para almacenarlos y procesarlos. Ante este límite físico existen dos caminos: escalar verticalmente (\textit{scale-up}), adquiriendo servidores con mayor cantidad de núcleos y memoria, o escalar horizontalmente (\textit{scale-out}), distribuyendo el conjunto de datos y la carga de cómputo entre múltiples computadoras conectadas en red. La vía horizontal resulta económicamente viable y no posee un techo rígido de hardware, pero introduce retos complejos de sistemas distribuidos: división coherente de datos, coordinación inter-nodo, sobrecarga en la red (\textit{network traffic}) y preservación de consistencia ante fallos parciales de hardware.
+El crecimiento exponencial del volumen de datos en las organizaciones modernas (registros de transacciones financieras, eventos de interacción de usuarios, telemetría IoT y flujos continuos en tiempo real) ha superado la capacidad de procesamiento de las arquitecturas tradicionales basadas en un único servidor. Frente a este desafío, existen dos alternativas de escalamiento: vertical (\textit{scale-up}), incrementando la memoria y procesadores de una máquina central, u horizontal (\textit{scale-out}), coordinando clústeres de computadoras conectadas en red. La vía horizontal resulta más económica y no posee un límite físico estricto, pero introduce retos complejos de sistemas distribuidos: estructuración y particionamiento de datos, coordinación inter-nodo, tráfico de red (\textit{shuffle}) y tolerancia a fallos parciales de hardware.
 
-Google formalizó una primera respuesta masiva a estos problemas con el modelo MapReduce~\cite{dean2004mapreduce}, que el ecosistema Apache popularizó a través de Hadoop y su sistema de archivos distribuido HDFS~\cite{shvachko2010hdfs}. Si bien MapReduce resultó altamente robusto y eficaz para transformaciones por lotes de una sola pasada, evidenció severas ineficiencias en algoritmos iterativos característicos del aprendizaje automático (\textit{Machine Learning}), los cuales requieren recorrer las mismas estructuras de datos decenas de veces. Apache Spark~\cite{zaharia2010spark,zaharia2012rdd} surgió específicamente para resolver esta deficiencia, conservando los datos intermedios en memoria entre iteraciones y garantizando tolerancia a fallos sin recurrir a la replicación en disco.
+El paradigma MapReduce~\cite{dean2004mapreduce}, formalizado por Google y popularizado mediante Apache Hadoop y su sistema de archivos distribuido HDFS~\cite{shvachko2010hdfs}, resolvió la tolerancia a fallos en transformaciones masivas por lotes mediante la persistencia y replicación física de resultados intermedios en disco. No obstante, este enfoque demostró una ineficiencia severa en algoritmos iterativos característicos del aprendizaje automático (\textit{Machine Learning}) y en consultas analíticas interactivas, donde los mismos conjuntos de datos se exploran decenas de veces. Apache Spark~\cite{zaharia2010spark,zaharia2012rdd} fue concebido para superar este obstáculo, reteniendo los datos en la memoria RAM de los nodos trabajadores entre etapas sucesivas y sustituyendo la replicación costosa por un grafo de linaje lógico determinista.
 
-Este informe tiene dos objetivos principales:
+El presente informe tiene como propósito abordar los aspectos fundamentales exigidos para la evaluación de tecnologías distribuidas:
 \begin{enumerate}
-\item Analizar los fundamentos teóricos y la arquitectura de Apache Spark y de su biblioteca de aprendizaje automático, MLlib~\cite{meng2016mllib}, contrastando su paradigma distribuido y analítico con el procesamiento de las bases de datos relacionales tradicionales.
-\item Estudiar en profundidad la paralelización de algoritmos iterativos sobre macrodatos, tomando como núcleo analítico a K-Means, y examinando los patrones de agregación jerárquica (\textit{treeAggregate}), las canalizaciones (\textit{ML Pipelines}), las optimizaciones de bajo nivel del motor (Catalyst y Project Tungsten) y las estrategias para resolver cuellos de botella en producción.
+\item \textbf{Modelo de datos}: cómo se estructuran (RDD, DataFrame, Dataset), cómo se almacenan en memoria y almacenamiento columnar en disco, y cómo se consultan.
+\item \textbf{Arquitectura y funcionamiento interno}: mecanismos de distribución de tareas, políticas de replicación, estrategias de indexación/poda de datos y modelos de consistencia de lectura y escritura.
+\item \textbf{Comparación fundamentada con el modelo relacional}: contraste de paradigmas (OLTP frente a OLAP, normalización frente a desnormalización, ACID frente a consistencia de lotes) y complementariedad en arquitecturas modernas.
+\item \textbf{Casos de uso reales y contraindicaciones}: escenarios analíticos donde la tecnología destaca y situaciones donde su uso degrada el rendimiento.
+\item \textbf{Operaciones concretas}: ejemplos de código ejecutable que abarcan consultas analíticas, escrituras particionadas, entrenamiento iterativo de K-Means y canalizaciones completas (\textit{ML Pipelines}).
 \end{enumerate}
 
-El resto del informe se estructura de la siguiente manera: la Sección~\ref{sec:marco} expone el marco teórico del procesamiento distribuido y la arquitectura de Spark; la Sección~\ref{sec:relacional} examina los casos de uso y compara Spark con los sistemas relacionales; la Sección~\ref{sec:kmeans} formaliza el algoritmo K-Means y su paralelización mediante estadísticos suficientes; la Sección~\ref{sec:fallos} analiza la tolerancia a fallos por linaje, la ejecución especulativa y la comparación temporal analítica con Hadoop; la Sección~\ref{sec:mllib-avanzado} profundiza en el aprendizaje automático a escala masiva, agregación en árbol, canalizaciones, optimizaciones del motor y mitigación de cuellos de botella; finalmente, la Sección~\ref{sec:conclusiones} resume las conclusiones.
+El resto del informe se estructura así: la Sección~\ref{sec:modelo-arquitectura} detalla el modelo de datos, la arquitectura interna, replicación, indexación y consistencia; la Sección~\ref{sec:relacional} profundiza en la comparación con el modelo relacional, casos de uso reales y contraindicaciones; la Sección~\ref{sec:operaciones-kmeans} presenta operaciones concretas de consulta/escritura y el caso de estudio de K-Means; la Sección~\ref{sec:fallos} analiza la tolerancia a fallos, mitigación de rezagados y rendimiento comparado frente a Hadoop; la Sección~\ref{sec:mllib-avanzado} formaliza el aprendizaje automático a escala, agregación en árbol, canalizaciones y optimización del motor (Catalyst y Tungsten); y la Sección~\ref{sec:conclusiones} sintetiza las conclusiones.
 
-\section{Marco teórico}
-\label{sec:marco}
+\section{Modelo de datos, arquitectura y funcionamiento interno}
+\label{sec:modelo-arquitectura}
 
-\subsection{El modelo MapReduce}
+\subsection{Modelo de datos: Estructura, almacenamiento y consulta}
 
-MapReduce~\cite{dean2004mapreduce} estructura cualquier cómputo distribuido sobre dos funciones parametrizadas por el desarrollador. La función \textit{map} procesa de manera aislada y paralela cada fragmento de la entrada, emitiendo pares clave--valor intermedios. Posteriormente, el entorno de ejecución agrupa todos los valores asociados a una misma clave y los distribuye a través de la red en una fase denominada \textit{shuffle}. Finalmente, la función \textit{reduce} procesa la lista agregada de valores para cada clave, generando la salida consolidada. De manera complementaria, una función local \textit{combiner} puede aplicar una reducción previa en cada nodo antes del \textit{shuffle}, disminuyendo drásticamente el tráfico cuando la operación es asociativa y conmutativa.
+A diferencia de los sistemas de bases de datos tradicionales que imponen un único motor de almacenamiento y un esquema relacional estricto, Apache Spark opera como un motor de procesamiento desacoplado que define tres abstracciones sucesivas de modelado de datos:
 
-El sistema subyacente se encarga de particionar la entrada, planificar tareas, reintentar ejecuciones fallidas y supervisar la red. Para asegurar resiliencia absoluta, cada etapa de MapReduce lee sus entradas desde HDFS y almacena sus salidas en disco con replicación triple~\cite{shvachko2010hdfs}. Si bien este mecanismo garantiza alta tolerancia a fallos, impone una penalización de rendimiento prohibitiva en algoritmos iterativos: cada paso sucesivo debe encadenar un trabajo independiente que paga el costo de escribir y volver a leer del disco todo el conjunto de datos.
-
-\subsection{Apache Spark y los RDD}
-
-Spark~\cite{zaharia2010spark} supera esta barrera mediante el concepto de \textit{Resilient Distributed Dataset} (RDD)~\cite{zaharia2012rdd}: una colección distribuida, inmutable y particionada de objetos en memoria. Sobre los RDD se definen dos categorías de operaciones:
-
+\textbf{1) Resilient Distributed Datasets (RDD)}: Colección distribuida de objetos inmutable, particionada y evaluada de forma perezosa (\textit{lazy evaluation})~\cite{zaharia2012rdd}. Los RDD operan a bajo nivel sin requerir un esquema predefinido; pueden almacenar objetos arbitrarios (estructurados, semiestructurados o texto libre). Las operaciones sobre RDD se dividen en:
 \begin{itemize}
-\item \textbf{Transformaciones} (\texttt{map}, \texttt{filter}, \texttt{groupByKey}, \ldots): Definen un nuevo RDD aplicando una función sobre uno existente. Son de evaluación perezosa (\textit{lazy evaluation}): no se calculan al invocarse, sino que se ensamblan en un grafo dirigido acíclico (DAG) que describe el linaje lógico de cómputo.
-\item \textbf{Acciones} (\texttt{count}, \texttt{collect}, \texttt{reduce}, \ldots): Requieren materializar un resultado hacia el \textit{driver} o escribirlo en almacenamiento, lo que desencadena la optimización y ejecución efectiva del DAG.
+\item \textit{Transformaciones} (\texttt{map}, \texttt{filter}, \texttt{groupByKey}): Crean un nuevo RDD a partir del anterior sin materializarlo, registrando la operación en un grafo dirigido acíclico (DAG).
+\item \textit{Acciones} (\texttt{count}, \texttt{collect}, \texttt{saveAsTextFile}): Disparan la ejecución y optimización física del DAG para devolver un resultado al \textit{driver} o escribirlo en almacenamiento.
 \end{itemize}
 
-La evaluación perezosa permite que el planificador inspeccione el grafo de ejecución completo antes de despachar tareas. De este modo, Spark clasifica las dependencias en dos tipos:
-\begin{enumerate}
-\item \textit{Dependencias estrechas} (\textit{narrow}): Cada partición del RDD padre es utilizada por a lo sumo una partición del RDD hijo (ej. \texttt{map}, \texttt{filter}). Permiten ejecutar múltiples operaciones encadenadas en memoria dentro del mismo hilo (\textit{pipelining}) sin sincronización por red.
-\item \textit{Dependencias amplias} (\textit{wide}): Múltiples particiones hijas dependen de datos distribuidos en distintas particiones padres (ej. \texttt{reduceByKey}, \texttt{join}). Requieren una costosa etapa de \textit{shuffle} y delimitan las fronteras entre etapas (\textit{stages}) de ejecución.
-\end{enumerate}
+\textbf{2) DataFrames y Datasets}: Un DataFrame es una colección distribuida organizada en columnas con nombre y tipos de datos bien definidos, equivalente conceptual a una tabla relacional pero optimizada para cómputo distribuido~\cite{spark-sql}. Su estructura se rige por un esquema explícito denominado \texttt{StructType}, compuesto por múltiples campos \texttt{StructField}. Los \textit{Datasets} (disponibles en Scala y Java) agregan seguridad de tipos en tiempo de compilación (\textit{compile-time type safety}).
 
-Dos propiedades diferencian decisivamente a los RDD. La primera es la \textbf{persistencia explícita}: mediante \texttt{cache()} o \texttt{persist()}, el programador puede mantener un RDD materializado en la memoria RAM de los nodos trabajadores tras su primera evaluación, permitiendo su reutilización en decenas de iteraciones sin incurrir en I/O de almacenamiento. La segunda es el \textbf{linaje} (\textit{lineage}): en lugar de mantener copias redundantes de conjuntos intermedios en disco, cada partición retiene la fórmula exacta de transformaciones que la originaron. Ante la pérdida de un nodo, Spark simplemente reejecuta las transformaciones sobre la partición afectada desde la fuente persistente~\cite{zaharia2012rdd}.
-
-\subsection{Arquitectura de ejecución}
-
-Una aplicación en Apache Spark se compone de cuatro entidades estructurales~\cite{spark-cluster}, representadas esquemáticamente en la Fig.~\ref{fig:arquitectura}:
-
+\textbf{3) Almacenamiento físico en memoria y disco}:
 \begin{itemize}
-\item \textbf{Driver}: Proceso principal que ejecuta la función \texttt{main} del programa. Traduce el código a un grafo DAG, descompone el plan en etapas y tareas, programa su ejecución y consolida resultados finales.
-\item \textbf{Cluster Manager} (o \textit{master}): Administra la asignación de recursos computacionales físicos o virtualizados en el clúster. Puede operar en modo nativo (\textit{Standalone}), YARN~\cite{vavilapalli2013yarn} o Kubernetes.
-\item \textbf{Worker Node}: Servidor físico o máquina virtual perteneciente al clúster, responsable de alojar y mantener procesos ejecutores.
-\item \textbf{Executor}: Proceso independiente instanciado en un \textit{worker} para una aplicación específica. Ejecuta tareas concurrentes en hilos sobre particiones de datos y conserva fragmentos de RDD persistidos en su espacio de memoria.
+\item \textit{En memoria RAM}: Spark almacena los registros de DataFrames utilizando el formato binario compacto \texttt{UnsafeRow} de Project Tungsten. Los datos se ubican en bloques contiguos de memoria fuera del recolector de basura (\textit{Off-Heap}), suprimiendo la sobrecarga de encabezados de objetos Java y evitando pausas de recolección (\textit{Garbage Collection pauses}).
+\item \textit{En almacenamiento persistente}: Spark no posee un formato de disco propietario; se integra con sistemas distribuidos (HDFS, Amazon S3, Google Cloud Storage). El almacenamiento óptimo es de tipo \textbf{columnar particionado} (Apache Parquet o Apache ORC), comprimido con algoritmos como Snappy o Zstandard. Los datos se organizan en jerarquías de directorios que codifican columnas de partición (ej. \texttt{/ventas/anio=2026/mes=11/}).
 \end{itemize}
+
+\textbf{4) Mecanismos de consulta}: Los datos se consultan indistintamente mediante la API declarativa de DataFrames (métodos encadenables \texttt{select}, \texttt{filter}, \texttt{groupBy}, \texttt{join}) o mediante sentencias estándar ANSI SQL (\texttt{spark.sql("SELECT ...")}) registradas sobre tablas o vistas temporales. Ambas APIs se unifican bajo el mismo compilador lógico Catalyst~\cite{armbrust2015sparksql}.
+
+\subsection{Arquitectura y distribución del cómputo}
+
+La arquitectura de una aplicación Spark sigue el modelo maestro--trabajador (\textit{master-worker}), ilustrado en la Fig.~\ref{fig:arquitectura}:
 
 \begin{figure}[t]
 \centering
@@ -184,24 +178,62 @@ Una aplicación en Apache Spark se compone de cuatro entidades estructurales~\ci
 \vspace{-6pt}
 \end{figure}
 
-\subsection{Spark MLlib}
+\begin{itemize}
+\item \textbf{Driver}: Proceso principal que ejecuta el método \texttt{main}. Transforma el código en un DAG de dependencias, divide el DAG en etapas (\textit{stages}) según los límites de \textit{shuffle}, programa las tareas individuales (\textit{tasks}) y consolida los resultados.
+\item \textbf{Cluster Manager}: Administrador de recursos del clúster (Standalone, Apache Hadoop YARN~\cite{vavilapalli2013yarn} o Kubernetes). Asigna nodos y memoria a la aplicación; no interviene en el cómputo de datos.
+\item \textbf{Worker Nodes y Executors}: Servidores físicos o pods que alojan procesos \textit{executors}. Cada ejecutor ejecuta tareas en múltiples hilos sobre particiones de datos y conserva datos persistidos en memoria.
+\end{itemize}
 
-MLlib es el componente nativo de Apache Spark destinado al aprendizaje automático escalable~\cite{meng2016mllib}. Provee implementaciones distribuidas de algoritmos de agrupamiento, clasificación, regresión, análisis de componentes principales y recomendación colaborativa. Su ventaja arquitectónica radica en que el mismo código ensayado en un entorno local puede escalarse a miles de núcleos y terabytes de datos sin modificaciones algorítmicas, aprovechando la infraestructura de paralelismo de datos.
+\textbf{Distribución de datos}: La unidad atómica de paralelismo es la \textbf{partición}. Los datos se distribuyen entre particiones mediante particionamiento por dispersión (\texttt{HashPartitioner}, aplicando \texttt{hash(clave) \% numParticiones}) o por rangos ordenados (\texttt{RangePartitioner}). Las transformaciones se clasifican en:
+\begin{enumerate}
+\item \textit{Dependencias estrechas} (\textit{narrow}): Cada partición hija depende de una única partición padre (ej. \texttt{map}, \texttt{filter}). Se procesan en paralelo dentro del mismo ejecutor (\textit{pipelining}) sin tráfico de red.
+\item \textit{Dependencias amplias} (\textit{wide}): Múltiples particiones hijas requieren datos de distintas particiones padres (ej. \texttt{groupByKey}, \texttt{join}). Requieren redistribución global por red (\textit{shuffle}) y marcan las fronteras entre etapas.
+\end{enumerate}
+
+\subsection{Replicación, linaje y resiliencia}
+
+A diferencia de los sistemas de almacenamiento como HDFS, que garantizan tolerancia a fallos manteniendo tres réplicas físicas de cada bloque en disco, Spark adopta una filosofía radicalmente distinta: \textbf{no replica particiones en memoria por defecto} (factor de replicación 1). Replicar en memoria RAM terabytes de datos intermedios reduciría a la mitad o a un tercio la memoria disponible para el cómputo real.
+
+En su lugar, Spark implementa tolerancia a fallos mediante el \textbf{linaje determinista del DAG}~\cite{zaharia2012rdd}:
+\begin{itemize}
+\item Cada RDD o DataFrame registra la receta de operaciones y las particiones padre de las que proviene.
+\item Si un ejecutor falla y pierde una o más particiones en RAM, el \textit{driver} detecta la ausencia de la tarea y la despacha a otro ejecutor disponible.
+\item El nuevo ejecutor reconstruye \textit{únicamente la partición perdida}, leyendo el fragmento original desde el almacenamiento base y reaplicando las transformaciones registradas.
+\end{itemize}
+
+Para escenarios críticos donde recomputar una partición resulta sumamente costoso, el programador puede definir niveles de persistencia avanzados mediante \texttt{persist(StorageLevel.MEMORY\_AND\_DISK\_2)}, lo que instruye a Spark a replicar particiones en dos nodos trabajadores diferentes. La persistencia definitiva de los datos finales se delega al almacenamiento duradero subyacente (HDFS, S3).
+
+\subsection{Mecanismos de indexación y modelo de consistencia}
+
+\textbf{1) Indexación}: Una de las diferencias conceptuales más relevantes con los sistemas relacionales vistos en la materia es que Spark \textbf{no mantiene estructuras de índices B-Tree o índices Hash secundarios persistentes} sobre las tablas. En volúmenes de cientos de terabytes, mantener índices B-Tree para cada registro introduce un sobrecosto de almacenamiento y actualización inmanejable para un motor analítico. En su lugar, Spark optimiza el acceso masivo mediante:
+\begin{itemize}
+\item \textit{Poda de particiones} (\textit{Partition Pruning}): Al estructurar el almacenamiento en carpetas (ej. \texttt{anio=2026/mes=11/}), Catalyst omite por completo escanear los directorios que no coinciden con las cláusulas \texttt{WHERE}.
+\item \textit{Salto de datos} (\textit{Data Skipping}): En archivos Parquet/ORC, cada bloque de registros (\textit{Row Group}) almacena estadísticas de metadatos con los valores mínimo y máximo de cada columna. Si el valor buscado no pertenece al intervalo $[\min, \max]$, el bloque entero se descarta sin leerlo de disco.
+\item \textit{Filtros de Bloom en tiempo de ejecución}: En operaciones de unión (\textit{join}), Spark puede generar un filtro de Bloom compacto sobre la tabla menor para descartar tempranamente filas de la tabla mayor en los ejecutores antes de enviarlas al \textit{shuffle}.
+\end{itemize}
+
+\textbf{2) Modelo de consistencia}: Spark es un motor computacional desacoplado del almacenamiento, no una base de datos transaccional con bloqueos a nivel de fila:
+\begin{itemize}
+\item \textit{Consistencia de lectura}: Provee un aislamiento equivalente a \textit{Snapshot Isolation} de facto: una consulta Spark lee una foto estática y consistente de los archivos existentes en el almacenamiento en el instante de iniciar la etapa de lectura.
+\item \textit{Consistencia de escritura}: Para evitar que tareas fallidas dejen datos corruptos o duplicados, Spark emplea protocolos de confirmación atómica (\texttt{FileCommitProtocol}). Cada tarea escribe sus particiones en directorios de trabajo temporales (\texttt{\_temporary}); únicamente cuando la etapa completa finaliza exitosamente, el \textit{driver} renombra y confirma atómicamente los archivos en la ruta definitiva.
+\item \textit{Garantías ACID sobre lagos de datos}: En arquitecturas modernas, Spark se integra con formatos transaccionales abiertos como \textbf{Delta Lake}~\cite{armbrust2020deltalake} o Apache Iceberg. Estas capas incorporan registros de transacciones basados en bitácoras (\textit{transaction logs}) con control de concurrencia optimista (OCC), dotando a Spark de operaciones ACID completas (\texttt{UPDATE}, \texttt{DELETE}, \texttt{MERGE} y viajes en el tiempo /\textit{time-travel}).
+\end{itemize}
 
 \section{Casos de uso y comparación con el modelo relacional}
 \label{sec:relacional}
 
-\subsection{Escenarios de aplicación y cargas de trabajo}
+\subsection{Comparación fundamentada con el modelo relacional}
 
-Spark está diseñado para cargas analíticas masivas (OLAP, \textit{Online Analytical Processing}) y procesamiento por lotes sobre volúmenes que desbordan un servidor individual. Un escenario representativo es un flujo ETL (\textit{Extract, Transform, Load}) que ingiere terabytes de eventos web o registros transaccionales, aplica desnormalizaciones y agrega métricas para consultas de inteligencia de negocio mediante Spark SQL~\cite{spark-sql}. Otro escenario típico es el entrenamiento distribuido de modelos predictivos y de segmentación con MLlib sobre lagos de datos (\textit{data lakes}). El caso de estudio de K-Means analizado en este trabajo modela la segmentación masiva de usuarios o transacciones a partir de datos consolidados en lagos de datos empresariales.
+El modelo relacional tradicional, formalizado por E.~F. Codd en 1970, se diseñó bajo el paradigma de operaciones transaccionales de grano fino (OLTP, \textit{Online Transaction Processing}). En la materia se estudian sus pilares: tablas bidimensionales, tuplas, dominios, claves primarias y foráneas con integridad referencial estricta, y el proceso de \textbf{normalización} (1FN, 2FN, 3FN, BCNF) orientado a erradicar redundancias y anomalías de inserción, modificación y borrado.
 
-Por el contrario, Spark no constituye un reemplazo adecuado para motores de bases de datos relacionales en entornos operacionales y transaccionales (OLTP, \textit{Online Transaction Processing}). En escenarios donde se requieren lecturas y modificaciones puntuales de registros individuales con latencias de milisegundos, concurrencia de miles de clientes concurrentes y restricciones estrictas de integridad referencial, los motores relacionales clásicos superan ampliamente a los sistemas distribuidos basados en lotes. Distribuir un conjunto de datos pequeño en un clúster Spark introduce sobrecargas de serialización, red y coordinación que degradan el rendimiento en comparación con una ejecución mono-nodo optimizada.
+En contraste, Apache Spark responde al paradigma analítico masivo (OLAP, \textit{Online Analytical Processing}):
+\begin{itemize}
+\item \textit{Normalización frente a Desnormalización}: En un motor relacional, los datos se normalizan para ahorrar almacenamiento y garantizar consistencia puntual; las consultas recomponen la información mediante \texttt{JOIN} locales acelerados por índices B-Tree. En un sistema distribuido como Spark, las uniones entre tablas grandes distribuidas exigen redistribuir físicamente los datos por red (\textit{shuffle}), lo que constituye la operación más costosa del clúster. Por ello, en Big Data se favorece deliberadamente la \textbf{desnormalización} y estructuras anidadas (registros complejos, arreglos, esquemas en estrella o copo de nieve) para procesar consultas masivas con escaneos columnares directos.
+\item \textit{Transacciones ACID frente a Cómputo por Lotes}: Los sistemas relacionales emplean mecanismos complejos de concurrencia (bloqueos de dos fases 2PL, registros de escritura anticipada WAL) para procesar miles de transacciones concurrentes por segundo que modifican una fila a la vez. Spark no compite en este terreno: procesa lotes de millones o miles de millones de registros, operando sobre colecciones inmutables donde las escrituras se realizan por reemplazo o anexión (\textit{append}) de particiones completas.
+\item \textit{Escalabilidad}: Los RDBMS tradicionales escalan predominantemente de forma vertical; particionarlos horizontalmente (\textit{sharding}) requiere lógica compleja a nivel de aplicación y degrada la integridad referencial. Spark escala horizontalmente de manera nativa y transparente.
+\end{itemize}
 
-\subsection{Diferencias y complementariedad arquitectónica}
-
-Spark no es una base de datos: carece de almacenamiento propio dependiente de disco y de mecanismos nativos de transacciones ACID para escrituras atómicas concurrentes a nivel de tupla. Aunque Spark SQL ofrece una sintaxis declarativa idéntica al estándar relacional, las consultas se traducen en planes de transformaciones distribuidas sobre particiones completas de datos~\cite{spark-sql}.
-
-Asimismo, las bases de datos relacionales tradicionales preservan la persistencia e integridad mediante registros de escritura previa (\textit{Write-Ahead Logging}, WAL) y réplicas de almacenamiento~\cite{postgresql-transactions}. Spark, en contraposición, recurre al linaje determinista del DAG para reconstruir particiones perdidas en memoria, delegando la persistencia duradera final al sistema de archivos subyacente (ej. HDFS, Amazon S3).
+La Tabla~\ref{tab:relacional} resume la confrontación paradigmática.
 
 \begin{table}[t]
 \caption{Comparación entre bases de datos relacionales y Apache Spark}
@@ -213,70 +245,109 @@ Asimismo, las bases de datos relacionales tradicionales preservan la persistenci
 \textbf{Dimensión} & \textbf{Base de datos relacional} & \textbf{Apache Spark} \\
 \midrule
 Propósito central & Transacciones OLTP y consultas operacionales & Procesamiento analítico OLAP y ML distribuido \\
-Unidad operativa & Filas, índices B-Tree y tablas relacionales & Particiones distribuidas, RDD y DataFrames \\
-Patrón de acceso & Lecturas/escrituras atómicas puntuales indexadas & Escaneo masivo, transformaciones y reducciones \\
+Estructuración & Tablas normalizadas (1FN--3FN), integridad referencial & DataFrames desnormalizados, esquemas columnares \\
+Indexación & Índices B-Tree / Hash secundarios en disco & Poda de particiones, data skipping y Bloom filters \\
+Patrón de acceso & Lecturas/escrituras atómicas puntuales ($<$ 10\,ms) & Escaneo masivo de lotes y transformaciones en RAM \\
 Escalabilidad & Vertical predominante (o sharding complejo) & Horizontal elástica sobre clústeres de cómputo \\
-Garantías ACID & Integridad referencial y transacciones nativas & Dependientes del sistema de almacenamiento destino \\
-Uso de SQL & Consultas sobre esquemas fijos indexados & Optimización de planes masivos con Catalyst \\
+Garantías ACID & Integridad referencial y transacciones nativas & Dependientes de la capa de storage (ej. Delta Lake) \\
+Uso de SQL & Consultas sobre esquemas fijos indexados & Optimización de planes lógicos/físicos con Catalyst \\
 \bottomrule
 \end{tabular}
 \vspace{-5pt}
 \end{table}
 
-En la práctica empresarial ambas tecnologías son complementarias: los sistemas relacionales registran el tráfico transaccional continuo y periódicamente vuelcan sus datos a almacenes distribuidos, donde clústeres de Spark ejecutan procesos de agregación, minería y entrenamiento analítico.
+\subsection{Casos de uso reales}
 
-\section{K-Means distribuido}
-\label{sec:kmeans}
+Spark resulta la tecnología idónea en los siguientes escenarios industriales:
+\begin{enumerate}
+\item \textbf{Canalizaciones de Ingesta y ETL/ELT masivas}: Empresas del sector financiero y telecomunicaciones utilizan Spark para extraer cientos de gigabytes o terabytes diarios de transacciones, aplicar transformaciones complejas, desduplicación y validaciones de esquema, almacenándolos en lagos de datos para consumo corporativo.
+\item \textbf{Entrenamiento distribuido de Machine Learning}: Modelos de segmentación de usuarios (K-Means), sistemas de recomendación masivos para comercio electrónico (factorización matricial ALS) y clasificación de riesgo crediticio con Spark MLlib~\cite{meng2016mllib}.
+\item \textbf{Análisis interactivo de Big Data (OLAP)}: Consultas analíticas complejas sobre miles de millones de registros mediante Spark SQL conectado a plataformas de Business Intelligence (Tableau, PowerBI).
+\item \textbf{Procesamiento continuo de flujos (\textit{Structured Streaming})}: Detección de fraude en transacciones de tarjetas de crédito y procesamiento de eventos IoT con ventanas temporales deslizantes.
+\end{enumerate}
 
-\subsection{Formulación del algoritmo}
+\subsection{Situaciones en las que no conviene utilizar Spark}
 
-Dado un conjunto de $n$ puntos multidimensionales $x_1,\ldots,x_n \in \mathbb{R}^d$ y un número predeterminado $k$ de conglomerados, K-Means busca hallar un conjunto de centroides $\mu_1,\ldots,\mu_k \in \mathbb{R}^d$ que minimice la función de costo de error cuadrático intra-grupo (WSSSE, \textit{Within-Set Sum of Squared Errors}):
+Identificar cuándo \textbf{no} debe utilizarse Spark es un criterio ingenieril esencial:
+\begin{itemize}
+\item \textbf{Cargas transaccionales operativas (OLTP)}: Si la aplicación requiere actualizar o consultar saldos bancarios, registrar reservas de pasajes o gestionar carritos de compra con miles de transacciones concurrentes por segundo y latencias inferiores a 10 milisegundos, una base de datos relacional como PostgreSQL o MySQL es infinitamente superior.
+\item \textbf{Consultas puntuales indexadas por clave}: Consultar el perfil de un cliente por su clave primaria (\texttt{WHERE id = 12345}) en Spark requiere planificar tareas y escanear metadatos, tardando cientos de milisegundos o segundos; un RDBMS o una base clave--valor (Redis, Cassandra) lo resuelve en 1 milisegundo mediante índices B-Tree o tablas hash.
+\item \textbf{Conjuntos de datos que caben en una sola máquina}: Cuando los datos ocupan menos de 10 a 20 gigabytes, bibliotecas mono-nodo como Pandas, DuckDB, Polars o PostgreSQL son órdenes de magnitud más rápidas y simples. Distribuir datos pequeños en Spark agrega costos de serialización, coordinación del \textit{driver} y red que ralentizan la ejecución innecesariamente.
+\end{itemize}
+
+\section{Operaciones concretas: Consultas, escrituras y agrupamiento iterativo}
+\label{sec:operaciones-kmeans}
+
+\subsection{Consultas analíticas y escrituras particionadas}
+
+Para ilustrar las capacidades operacionales de la tecnología, el Listado~\ref{lst:operaciones} presenta un programa completo en PySpark que demuestra tres operaciones fundamentales: carga estructurada desde almacenamiento columnar Parquet, consultas analíticas con la API de DataFrames y con sintaxis ANSI SQL, y escritura particionada en almacenamiento distribuido.
+
+\begin{lstlisting}[language=Python, caption={Consultas analíticas y escrituras particionadas con PySpark}, label={lst:operaciones}]
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, avg, count, year
+spark = SparkSession.builder.appName("OperacionesAnaliticas").getOrCreate()
+
+# 1. Lectura estructurada desde formato columnar
+df = spark.read.parquet("hdfs:///datos/ventas.parquet")
+
+# 2. Consulta y agregacion con DataFrame API
+resumen_df = df.filter(col("monto") > 50.0) \
+    .withColumn("anio", year(col("fecha"))) \
+    .groupBy("anio", "categoria") \
+    .agg(avg("monto").alias("monto_prom"), count("id").alias("total"))
+
+# 3. Consulta equivalente con Spark SQL ANSI
+df.createOrReplaceTempView("ventas")
+resumen_sql = spark.sql("""
+    SELECT year(fecha) AS anio, categoria,
+           AVG(monto) AS monto_prom, COUNT(id) AS total
+    FROM ventas WHERE monto > 50.0 GROUP BY 1, 2
+""")
+
+# 4. Escritura distribuida particionada en disco
+resumen_df.write.mode("overwrite").partitionBy("anio") \
+    .parquet("hdfs:///datos/salida/resumen_ventas/")
+\end{lstlisting}
+
+\subsection{K-Means distribuido: Formulación algorítmica}
+
+Dado un conjunto de $n$ puntos $x_1,\ldots,x_n \in \mathbb{R}^d$ y un número $k$ de grupos, K-Means busca hallar $k$ centroides $\mu_1,\ldots,\mu_k \in \mathbb{R}^d$ que minimicen la función de costo WSSSE (\textit{Within-Set Sum of Squared Errors}):
 \begin{equation}
 J = \sum_{i=1}^{n} \min_{j \in \{1,\ldots,k\}} \lVert x_i - \mu_j \rVert^2 .
 \label{eq:costo}
 \end{equation}
 
-El algoritmo clásico de Lloyd~\cite{lloyd1982,macqueen1967} aproxima numéricamente la solución alternando iterativamente dos fases hasta alcanzar la convergencia:
+El algoritmo de Lloyd~\cite{lloyd1982,macqueen1967} aproxima numéricamente la solución alternando iterativamente dos fases hasta la convergencia:
 \begin{enumerate}
-\item \textbf{Asignación}: Cada punto $x_i$ se asocia al centroide más próximo según la distancia euclídea:
-\begin{equation}
-c(i) = \arg\min_{j \in \{1,\ldots,k\}} \lVert x_i - \mu_j \rVert^2 .
-\end{equation}
-\item \textbf{Actualización}: Se recalculan los $k$ centroides como el baricentro de todos los puntos asignados a cada grupo $j$:
-\begin{equation}
-\mu_j = \frac{1}{|C_j|} \sum_{i \in C_j} x_i, \quad \text{donde } C_j = \{i : c(i) = j\} .
-\end{equation}
+\item \textbf{Asignación}: Cada punto $x_i$ se clasifica al centroide más cercano: $c(i) = \arg\min_j \lVert x_i - \mu_j \rVert^2$.
+\item \textbf{Actualización}: Se recalculan los centroides como el promedio vectorial de los puntos asignados: $\mu_j = \frac{1}{|C_j|} \sum_{i \in C_j} x_i$.
 \end{enumerate}
-
-Dado que cada iteración reduce monotónicamente o conserva el costo $J$, el algoritmo converge en un número finito de pasos a un mínimo local condicionado por los centroides iniciales.
 
 \subsection{Paralelización mediante estadísticos suficientes}
 
-La fase de asignación exhibe un paralelismo elemental (\textit{embarrassingly parallel}): conociendo los $k$ centroides actuales, cualquier ejecutor puede clasificar sus puntos asignados de manera estrictamente local y sin consultar a otros nodos. En contraste, la fase de actualización requiere consolidar la información global de todas las particiones del clúster.
-
-Transmitir todos los puntos asignados al \textit{driver} anularía las ventajas del procesamiento distribuido. Para evitarlo, cada partición local $p$ calcula para cada grupo $j$ un vector de suma acumulada $S_{p,j} \in \mathbb{R}^d$ y un contador escalar $N_{p,j} \in \mathbb{N}$:
+La fase de asignación es puramente local en cada ejecutor. La fase de actualización, en cambio, requiere consolidar la información de todas las particiones del clúster. Enviar todos los puntos al \textit{driver} anularía la computación distribuida. Para evitarlo, cada ejecutor $p$ calcula para cada grupo $j$ un vector de suma acumulada $S_{p,j} \in \mathbb{R}^d$ y un contador $N_{p,j} \in \mathbb{N}$:
 \begin{equation}
 S_{p,j} = \sum_{i \in p,\; c(i)=j} x_i, \qquad N_{p,j} = \bigl|\{ i \in p : c(i)=j \}\bigr| .
 \end{equation}
 
-El par $(S, N)$ constituye un \textbf{estadístico suficiente}: encapsula toda la información requerida para computar el promedio global exacto. Como la suma vectorial y la suma escalar son operaciones asociativas y conmutativas, pueden reducirse en cualquier orden a lo largo del clúster. Una vez acumuladas las sumas globales, el nuevo centroide se obtiene mediante una única división:
+El par $(S, N)$ constituye un \textbf{estadístico suficiente}: permite calcular la media exacta sin retener los puntos individuales. Como la suma vectorial y escalar son asociativas y conmutativas, los ejecutores reducen sus estadísticos y el \textit{driver} divide una sola vez:
 \begin{equation}
 \mu_j' = \frac{\sum_p S_{p,j}}{\sum_p N_{p,j}} .
 \label{eq:centroide}
 \end{equation}
 
-El volumen de datos a transferir por partición se reduce a $k(d+1)$ números en punto flotante, magnitud completamente independiente del número $n$ de registros.
+El volumen transferido por partición es solo de $k(d+1)$ números en punto flotante, completamente independiente del volumen $n$ de registros.
 
 \subsection{El sesgo del promedio de promedios}
 
-Una aproximación errónea recurrente consiste en calcular directamente en cada partición el vector promedio local $\bar{x}_{p,j} = S_{p,j} / N_{p,j}$ y promediar posteriormente dichos vectores en el \textit{driver}. Esta estrategia produce un resultado matemáticamente incorrecto cuando las particiones poseen cardinalidades desiguales en un conglomerado, al ignorar la ponderación $N_{p,j}$. Considérese el caso unidimensional con un punto en $x=10$ en la partición 1 y tres puntos en $x=0$ en la partición 2:
+Calcular en cada partición el vector promedio local $\bar{x}_{p,j} = S_{p,j} / N_{p,j}$ y promediar esos vectores en el \textit{driver} genera un error matemático grave cuando las particiones poseen cardinalidades desiguales. Considérese un punto en $x=10$ en la partición 1 y tres puntos en $x=0$ en la partición 2:
 \begin{equation}
 \underbrace{\frac{10 + 0}{2} = 5}_{\text{Promedio de promedios (erróneo)}}
 \quad\neq\quad
 \underbrace{\frac{10 + 0 + 0 + 0}{4} = 2{,}5}_{\text{Promedio real ponderado}} .
 \end{equation}
 
-La Tabla~\ref{tab:mensajes} compara tres posibles estrategias de comunicación entre los \textit{executors} y el \textit{driver} durante cada iteración, analizadas para un escenario con $k=3$, $d=2$ y números en punto flotante de 8 bytes (doble precisión).
+La Tabla~\ref{tab:mensajes} compara las estrategias de comunicación para $k=3$, $d=2$ y valores de 8 bytes (doble precisión).
 
 \begin{table}[t]
 \caption{Estrategias de comunicación entre executors y driver}
@@ -295,11 +366,9 @@ C (Estadístico suf.) & Suma $S_{p,j}$ y conteo $N_{p,j}$ & 72\,B & Sí \\
 \vspace{-5pt}
 \end{table}
 
-La opción~A es correcta pero traslada todos los registros individuales al \textit{driver}, anulando el beneficio de la computación distribuida y saturando el ancho de banda de red. La opción~B reduce drásticamente el tráfico pero introduce un sesgo matemático inaceptable, ya que no pondera las cardinalidades de cada partición. La opción~C es mínima en volumen de red ($O(kd)$ independiente de $n_p$) y matemáticamente exacta, aplicando el concepto del \textit{combiner} de MapReduce al agrupamiento distribuido.
+\subsection{Implementación de K-Means en PySpark MLlib}
 
-\subsection{Inicialización e implementación en PySpark MLlib}
-
-Dado que K-Means es sensible a la posición inicial de los centros, Spark implementa el algoritmo \textit{k-means$\|$}~\cite{bahmani2012scalable}, una generalización paralela de \textit{k-means++} que muestrea múltiples centroides candidatos simultáneamente en $O(\log n)$ pasadas sobre el clúster. Los parámetros centrales del estimador \texttt{pyspark.ml.clustering.KMeans} son la cantidad de grupos \texttt{k}, la tolerancia de convergencia \texttt{tol}, el límite de iteraciones \texttt{maxIter} y la semilla aleatoria \texttt{seed}~\cite{spark-mllib}. El Listado~\ref{lst:pyspark} exhibe un flujo de entrenamiento básico.
+Spark implementa la inicialización paralelizable \textit{k-means$\|$}~\cite{bahmani2012scalable}. El Listado~\ref{lst:pyspark} exhibe el código para entrenar K-Means con MLlib.
 
 \begin{lstlisting}[language=Python, caption={K-Means con PySpark y MLlib}, label={lst:pyspark}]
 from pyspark.ml.clustering import KMeans
@@ -311,8 +380,6 @@ modelo = KMeans(k=3, maxIter=12, seed=1).fit(datos)
 print(modelo.clusterCenters())
 print(modelo.summary.trainingCost)  # WSSSE
 \end{lstlisting}
-
-La invocación a \texttt{cache()} resulta determinante: asegura que las transformaciones se computen una sola vez y residan en la RAM de los ejecutores, acelerando drásticamente las iteraciones sucesivas.
 
 \section{Tolerancia a fallos y rendimiento}
 \label{sec:fallos}
@@ -360,7 +427,7 @@ APIs soportadas & Java & Python, Scala, SQL, R, Java \\
 \section{Machine Learning a escala: Arquitectura, Pipelines y Optimización}
 \label{sec:mllib-avanzado}
 
-La paralelización básica descrita en la Sección~\ref{sec:kmeans} asume una comunicación plana hacia el maestro. Sin embargo, en despliegues con petabytes de datos y miles de particiones, la arquitectura debe resolver problemas de saturación de red, orquestación de características, optimización de hardware y asimetría de particiones.
+La paralelización básica descrita en la Sección~\ref{sec:operaciones-kmeans} asume una comunicación plana hacia el maestro. Sin embargo, en despliegues con petabytes de datos y miles de particiones, la arquitectura debe resolver problemas de saturación de red, orquestación de características, optimización de hardware y asimetría de particiones.
 
 \subsection{Comunicación distribuida y agregación en árbol}
 
@@ -440,17 +507,14 @@ from pyspark.ml import Pipeline
 from pyspark.ml.feature import VectorAssembler, StandardScaler
 from pyspark.ml.clustering import KMeans
 from pyspark.ml.evaluation import ClusteringEvaluator
-
 # Ingestion columnar Parquet y preparacion distribuida
 df = spark.read.parquet("hdfs:///datos/clientes.parquet")
 vec = VectorAssembler(inputCols=["ingreso", "antiguedad", "gastos"], outputCol="vec")
 std = StandardScaler(inputCol="vec", outputCol="features", withMean=True, withStd=True)
-
 # Definicion y ajuste del Pipeline con estimador KMeans
 kmeans = KMeans(k=4, initMode="k-means||", maxIter=25, seed=42)
 pipeline = Pipeline(stages=[vec, std, kmeans])
 modelo = pipeline.fit(df)
-
 # Evaluacion distribuida con metrica Silhouette
 pred = modelo.transform(df)
 score = ClusteringEvaluator(metricName="silhouette").evaluate(pred)
@@ -492,11 +556,11 @@ En entornos productivos, el rendimiento del clúster puede degradarse drásticam
 
 El procesamiento distribuido sobre macrodatos constituye una necesidad técnica cuando el volumen, la velocidad y la dimensionalidad de la información desbordan la capacidad de un servidor individual. Apache Spark superó las limitaciones de I/O en disco del modelo MapReduce al introducir colecciones inmutables en memoria con tolerancia a fallos basada en linaje determinista, posibilitando la ejecución eficiente de algoritmos iterativos.
 
-El estudio formal de K-Means demostró que el escalamiento horizontal efectivo depende de una formulación algorítmica adecuada: el uso de estadísticos suficientes reduce la transmisión de red a una magnitud independiente del número de instancias, mientras que la agregación jerárquica en árbol (\texttt{treeAggregate}) previene la saturación del nodo maestro al distribuir el cómputo de consolidación.
+El análisis de su arquitectura y modelo de datos reveló que el éxito de Spark radica en el desacoplamiento del cómputo respecto al almacenamiento: prescinde de índices B-Tree tradicionales y replicación en memoria para maximizar el rendimiento analítico mediante poda de particiones, escaneo columnar (\textit{data skipping}) y optimizaciones de bajo nivel con Catalyst y Project Tungsten. El caso de estudio de K-Means demostró que el escalamiento horizontal efectivo depende del empleo de estadísticos suficientes y de esquemas de agregación jerárquica (\texttt{treeAggregate}) que neutralizan los cuellos de botella en el nodo maestro.
 
-Asimismo, se evidenció que los sistemas de gestión de bases de datos relacionales y los motores distribuidos como Spark cumplen roles complementarios. Mientras que los primeros ofrecen garantías transaccionales ACID y latencias de milisegundos en operaciones de negocio operacionales (OLTP), Spark provee la infraestructura analítica masiva y elástica (OLAP) requerida para la ingeniería de datos y el entrenamiento de modelos de aprendizaje automático a gran escala.
+Asimismo, se evidenció que los sistemas de gestión de bases de datos relacionales y los motores analíticos como Spark no son tecnologías excluyentes sino complementarias. Mientras que los primeros garantizan consistencia transaccional ACID en operaciones de negocio operacionales (OLTP) de grano fino, Spark provee la infraestructura analítica masiva y elástica (OLAP) requerida para la ingeniería de datos y el entrenamiento de modelos de aprendizaje automático a gran escala.
 
-Finalmente, la consecución de una alta eficiencia en producción exige optimizaciones a nivel de motor de ejecución y control de infraestructura. Los avances provistos por el optimizador Catalyst y Project Tungsten permiten aprovechar al máximo las capacidades físicas del hardware moderno; sin embargo, el diseño adecuado de esquemas de particionamiento, la mitigación del sesgo de datos (\textit{data skew}) y el control del desbordamiento en el \textit{shuffle} siguen siendo responsabilidades cardinales de la ingeniería de datos para garantizar la escalabilidad lineal en el procesamiento masivo.
+Finalmente, la consecución de una alta eficiencia en producción exige resolver desafíos de infraestructura tales como el diseño de esquemas de particionamiento balanceados, la mitigación del sesgo de datos (\textit{data skew}) y el control del desbordamiento en el \textit{shuffle}, confirmando la necesidad de un enfoque integral de ingeniería de datos para alcanzar escalabilidad lineal en el procesamiento masivo.
 
 \begin{thebibliography}{99}
 \setlength{\itemsep}{0pt}
@@ -534,6 +598,9 @@ B.~Bahmani, B.~Moseley, A.~Vattani, R.~Kumar, and S.~Vassilvitskii, ``Scalable k
 
 \bibitem{armbrust2015sparksql}
 M.~Armbrust \textit{et al.}, ``Spark SQL: Relational data processing in Spark,'' in \textit{Proc. 2015 ACM SIGMOD Int. Conf. Management of Data}, Melbourne, Australia, 2015, pp.~1383--1394.
+
+\bibitem{armbrust2020deltalake}
+M.~Armbrust \textit{et al.}, ``Delta Lake: High-performance ACID table storage over cloud object stores,'' \textit{Proc. VLDB Endowment}, vol.~13, no.~12, pp.~3411--3424, 2020.
 
 \bibitem{spark-cluster}
 The Apache Software Foundation, ``Cluster mode overview,'' \textit{Apache Spark Documentation}. [Online]. Available: \url{https://spark.apache.org/docs/latest/cluster-overview.html} (accedido: nov. 2026).

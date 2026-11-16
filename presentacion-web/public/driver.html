@@ -28,7 +28,7 @@
 
       <div class="top-actions">
         <a class="btn btn-ghost link-only-full" href="/fichas">Tarjetas</a>
-        <a class="btn btn-ghost link-only-full" href="/teoria?slide=4">Usos y comparación</a>
+        <a class="btn btn-ghost link-only-full" href="/teoria?slide=4">Usos</a>
         <button class="btn join-chip" id="joinChip" type="button" title="Mostrar QR (Q)">
           <svg class="icon"><use href="/icons.svg#qr-code"/></svg>
           <span class="mono" id="joinUrl">…</span>
@@ -64,39 +64,116 @@
           </div>
         </section>
 
+        <section class="v-solo" data-view="solo" hidden>
+          <div class="solo-main">
+            <div class="solo-clock" id="soloClockBox">
+              <span class="solo-secs mono" id="soloClock">20</span>
+              <span class="solo-unit">segundos</span>
+            </div>
+            <p class="solo-job" id="soloJob"></p>
+            <div class="solo-result" id="soloResult" hidden>
+              <p class="solo-big" id="soloBig"></p>
+              <p class="solo-line" id="soloTopLine"></p>
+              <p class="solo-line" id="soloEstimate"></p>
+              <p class="solo-next" id="soloNext"></p>
+            </div>
+          </div>
+          <aside class="solo-board" aria-label="Los que más pintaron">
+            <h2><svg class="icon" aria-hidden="true"><use href="/icons.svg#trophy"/></svg> Los que más pintaron</h2>
+            <ol class="leaders" id="leaders"></ol>
+            <p class="solo-sum" id="soloSum"></p>
+          </aside>
+        </section>
+
+        <section class="v-arch" data-view="arch" hidden>
+          <div class="arch">
+            <div class="arch-node node-driver">
+              <svg class="icon node-ico" aria-hidden="true"><use href="/icons.svg#crown"/></svg>
+              <p class="node-kind">Driver</p>
+              <p class="node-name" id="archDriver">…</p>
+              <p class="node-note" id="archDriverNote">Tiene todos los datos</p>
+            </div>
+            <div class="arch-link">
+              <span>Pide compus</span>
+              <svg class="icon" aria-hidden="true"><use href="/icons.svg#arrow-right"/></svg>
+            </div>
+            <div class="arch-node node-cm">
+              <svg class="icon node-ico" aria-hidden="true"><use href="/icons.svg#server"/></svg>
+              <p class="node-kind">Cluster manager</p>
+              <p class="node-name">El proyector</p>
+              <p class="node-note">Sabe qué compus están libres y las presta</p>
+            </div>
+            <div class="arch-link">
+              <span>Se suman</span>
+              <svg class="icon" aria-hidden="true"><use href="/icons.svg#arrow-left"/></svg>
+            </div>
+            <div class="arch-node node-pool">
+              <svg class="icon node-ico" aria-hidden="true"><use href="/icons.svg#smartphone"/></svg>
+              <p class="node-kind">Compus libres</p>
+              <p class="node-big mono" id="poolCount">0</p>
+              <p class="node-note" id="poolNames"></p>
+            </div>
+          </div>
+          <p class="arch-foot" id="archFoot"></p>
+        </section>
+
         <section class="v-plot" data-view="plot" hidden>
           <div class="plot-box">
-            <svg id="plot" viewBox="-3 -3 106 106" role="img" aria-label="Puntos de las compus y los tres centros"></svg>
+            <svg id="plot" viewBox="-3 -3 106 106" role="img" aria-label="Puntos de los workers y los tres centros"></svg>
             <div class="spin-banner" id="spinBanner" hidden role="status">
               <svg class="icon" aria-hidden="true"><use href="/icons.svg#dices"/></svg>
               <span>Girando la ruleta…</span>
             </div>
           </div>
           <aside class="plot-side">
+            <section class="parts-block" id="partsBlock" hidden>
+              <p class="parts-label">
+                <svg class="icon" aria-hidden="true"><use href="/icons.svg#inbox"/></svg>
+                Resúmenes que llegaron al driver
+              </p>
+              <p class="parts-num"><strong class="mono" id="partsDone">0</strong> de <span class="mono" id="partsTotal">0</span></p>
+              <div class="bar"><span id="partsBar"></span></div>
+              <p class="parts-note" id="partsNote"></p>
+            </section>
+            <ul class="inbox" id="inbox" hidden></ul>
+            <section class="fail-card" id="failCard" hidden>
+              <svg class="icon"><use href="/icons.svg#power-off"/></svg>
+              <p id="failText"></p>
+            </section>
+            <section class="join-card" id="joinCard" hidden>
+              <svg class="icon"><use href="/icons.svg#shield-check"/></svg>
+              <p id="joinText"></p>
+            </section>
             <p class="stat" id="stat" hidden></p>
-            <section class="versus" id="versus" hidden aria-label="Entre todos contra una sola persona">
+            <section class="versus" id="versus" hidden aria-label="El clúster contra un driver solo">
               <div class="vs-row">
-                <p class="vs-label">Entre todos · <strong id="vsTeamVal"></strong></p>
+                <p class="vs-label">Con el clúster · <strong id="vsTeamVal"></strong></p>
                 <div class="vs-track"><span class="vs-bar vs-team" id="vsTeamBar"></span></div>
               </div>
               <div class="vs-row">
-                <p class="vs-label">Una sola persona · <strong id="vsSoloVal"></strong></p>
+                <p class="vs-label">Un driver solo · <strong id="vsSoloVal"></strong></p>
                 <div class="vs-track"><span class="vs-bar vs-solo" id="vsSoloBar"></span></div>
               </div>
               <p class="vs-note" id="vsNote"></p>
             </section>
+            <section class="round-block" id="roundBlock" hidden>
+              <div class="round-num">
+                <p class="round-label" id="roundLabel">Vuelta 1</p>
+                <p class="round-busy" id="roundBusy"></p>
+              </div>
+              <div class="shifts">
+                <p class="shifts-title">Cuánto se movieron los centros</p>
+                <div class="shift-bars" id="shiftBars" aria-hidden="true"></div>
+              </div>
+            </section>
+            <div class="totals" id="totals" hidden></div>
             <ul class="legend" aria-label="Referencias del dibujo">
               <li><svg viewBox="-6 -6 12 12" class="lg-ico"><circle r="4.4" fill="var(--c0)"/></svg>Violeta</li>
               <li><svg viewBox="-6 -6 12 12" class="lg-ico"><rect x="-4.2" y="-4.2" width="8.4" height="8.4" rx="0.6" fill="var(--c1)"/></svg>Celeste</li>
               <li><svg viewBox="-6 -6 12 12" class="lg-ico"><path d="M0 -5 5 4H-5z" fill="var(--c2)"/></svg>Rosa</li>
               <li class="lg-unpainted"><svg viewBox="-6 -6 12 12" class="lg-ico"><circle r="3.6" fill="var(--c-none)"/></svg>Sin pintar</li>
-              <li class="lg-note">Los centros son las figuras grandes con borde.</li>
+              <li class="lg-moved"><svg viewBox="-6 -6 12 12" class="lg-ico"><circle r="4.6" fill="none" stroke="var(--warn)" stroke-width="1.4"/></svg>Parte de una compu caída</li>
             </ul>
-            <section class="race-card" id="raceCard" hidden>
-              <h2><svg class="icon" aria-hidden="true"><use href="/icons.svg#trophy"/></svg> Los más rápidos</h2>
-              <ol class="podium" id="podium"></ol>
-              <p class="race-note" id="raceNote"></p>
-            </section>
           </aside>
         </section>
 
@@ -104,19 +181,18 @@
           <table class="map-table">
             <thead><tr><th scope="col">En el aula</th><th scope="col">En un clúster de verdad</th></tr></thead>
             <tbody>
-              <tr><td>El proyector repartió y juntó</td><td>Coordinador (driver)</td></tr>
-              <tr><td>Sus celulares</td><td>Computadoras que trabajan (workers)</td></tr>
-              <tr><td>Sus 6 puntos</td><td>Una parte de los datos (partición)</td></tr>
-              <tr><td>Pintar los puntos</td><td>La tarea de cada compu (map)</td></tr>
+              <tr><td id="endDriverRow">Quien pintó más, con todo el trabajo</td><td>Driver (el programa principal)</td></tr>
+              <tr><td>El proyector, que juntó las compus</td><td>Cluster manager</td></tr>
+              <tr><td>Sus celulares</td><td>Workers (executors)</td></tr>
+              <tr><td>Sus 6 puntos</td><td>Una partición de los datos</td></tr>
+              <tr><td>Pintar su parte</td><td>Una tarea (task)</td></tr>
               <tr><td>Mandar el resumen</td><td>Lo único que viaja por la red</td></tr>
-              <tr><td>Juntar los resúmenes</td><td>Reduce</td></tr>
-              <tr><td>Repetir vueltas</td><td>Entrenar el modelo (K-Means)</td></tr>
-              <tr><td>Apagar una compu</td><td>Tolerancia a fallos</td></tr>
+              <tr><td>Juntar los resúmenes</td><td>Reduce, en el driver</td></tr>
+              <tr><td>Se cayó una compu y otra hizo su parte</td><td>Tolerancia a fallos</td></tr>
             </tbody>
           </table>
           <div class="end-foot">
             <p class="end-nums" id="endNums"></p>
-            <p class="end-podium" id="endPodium" hidden></p>
             <div class="code-block">
               <p>Con Spark MLlib, todo esto se escribe así:</p>
               <pre class="mono"><code>modelo = KMeans(k=3).fit(datos)</code></pre>
@@ -129,9 +205,23 @@
     </main>
 
     <aside class="rail">
+      <section class="roles" id="roles" hidden>
+        <div class="role role-driver">
+          <svg class="icon" aria-hidden="true"><use href="/icons.svg#crown"/></svg>
+          <span class="role-k">Driver</span>
+          <span class="role-v" id="roleDriver">…</span>
+        </div>
+        <div class="role role-cm">
+          <svg class="icon" aria-hidden="true"><use href="/icons.svg#server"/></svg>
+          <span class="role-k">Cluster manager</span>
+          <span class="role-v">El proyector</span>
+        </div>
+      </section>
+
       <section class="compus">
         <div class="compus-head">
-          <h2><svg class="icon"><use href="/icons.svg#users"/></svg> Compus conectadas: <span class="mono" id="compusCount">0</span></h2>
+          <h2><svg class="icon"><use href="/icons.svg#users"/></svg> <span id="compusTitle">Compus conectadas: <span class="mono">0</span></span></h2>
+          <p class="compus-hint" id="compusHint" hidden></p>
         </div>
         <div class="compus-grid" id="compusGrid" role="list"></div>
       </section>
@@ -140,27 +230,6 @@
         <h2>Qué está pasando</h2>
         <p class="card-main" id="cardMain"></p>
         <p class="card-tech" id="cardTech"></p>
-      </section>
-
-      <section class="progress-block" id="progressBlock" hidden>
-        <p class="progress-text" id="progressText"></p>
-        <div class="bar"><span id="progressBar"></span></div>
-      </section>
-
-      <section class="round-block" id="roundBlock" hidden>
-        <div class="round-num">
-          <p class="round-label" id="roundLabel">Vuelta 1</p>
-          <p class="round-busy" id="roundBusy"></p>
-        </div>
-        <div class="shifts">
-          <p class="shifts-title">Cuánto se movieron los centros</p>
-          <div class="shift-bars" id="shiftBars" aria-hidden="true"></div>
-        </div>
-      </section>
-
-      <section class="fail-card" id="failCard" hidden>
-        <svg class="icon"><use href="/icons.svg#power-off"/></svg>
-        <p id="failText"></p>
       </section>
 
       <div class="actions">
@@ -193,7 +262,7 @@
 
   <div class="auth" id="auth" hidden>
     <form class="auth-card" id="authForm">
-      <h1>Clave del coordinador</h1>
+      <h1>Clave del proyector</h1>
       <p>El proyector necesita la clave que imprimió el servidor al arrancar.</p>
       <input class="mono" id="authKey" autocomplete="off" spellcheck="false" placeholder="ej. a1b2c3" required>
       <p class="auth-error" id="authError" role="alert"></p>

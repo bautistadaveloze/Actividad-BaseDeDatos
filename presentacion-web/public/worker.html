@@ -19,6 +19,7 @@
         <path d="M12 13.2 16 20H8z" fill="var(--c2)"/>
       </svg>
       <span id="barTitle">Clúster</span>
+      <span class="role-pill" id="barRole" hidden></span>
     </div>
     <div class="bar-conn" id="conn" data-state="off" role="status"><span class="dot"></span><span>Conectando</span></div>
   </header>
@@ -28,6 +29,7 @@
   <main class="screen" id="screen"></main>
 
   <script src="/socket.io/socket.io.js"></script>
+  <script src="/kmeans.js"></script>
   <script src="/worker.js"></script>
 </body>
 </html>

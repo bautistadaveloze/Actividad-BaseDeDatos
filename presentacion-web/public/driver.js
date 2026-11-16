@@ -1,15 +1,19 @@
 'use strict';
 
+// Projector screen. It plays the cluster manager, shows what every phone is
+// doing and keeps a button for every step, so the class never depends on
+// the phone that plays the driver.
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
 
-  const ORDER = ['lobby', 'paint', 'combine', 'auto', 'fail', 'end'];
+  const ORDER = ['lobby', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
   const STEPS = [
     { id: 'lobby', label: 'Unirse' },
-    { id: 'paint', label: 'Pintar' },
+    { id: 'solo', label: 'Driver solo' },
+    { id: 'manager', label: 'Cluster manager' },
+    { id: 'work', label: 'Workers' },
     { id: 'combine', label: 'Juntar' },
-    { id: 'auto', label: 'Repetir' },
-    { id: 'fail', label: 'Se apaga una' },
+    { id: 'fail', label: 'Se cae una' },
     { id: 'end', label: 'Cierre' },
   ];
 
@@ -17,31 +21,37 @@
   const COPY = {
     lobby: {
       title: 'Sumate con tu celular',
-      lead: 'Escaneá el QR. Tu celular va a ser una de las computadoras del clúster.',
+      lead: 'Escaneá el QR. Tu celular va a ser una computadora.',
     },
-    paint: {
-      title: 'Paso 1 · Pintá tus puntos',
-      lead: 'Cada celular recibió 6 puntos. Pintá cada uno del color del centro que le queda más cerca.',
-      main: 'Los datos se repartieron. Cada compu tiene solo su parte y trabaja sin esperar a nadie.',
-      tech: 'En un clúster: cada parte es una partición y pintar es la tarea (map).',
+    solo: {
+      title: 'Paso 1 · Sos el driver',
+      lead: 'El driver es la compu que tiene el trabajo. Sin ayuda, tiene que pintar todos los puntos sola.',
+      main: 'Una sola compu con todos los datos. ¿Llega a terminar?',
+      tech: 'En Spark: el driver es el programa principal. Sin clúster, hace todo en una sola máquina.',
+    },
+    manager: {
+      title: 'Paso 2 · Aparece el cluster manager',
+      lead: 'Sabe qué compus están libres y se las presta al driver. Sumá la tuya desde el celular.',
+      main: 'Un driver solo no da abasto. El cluster manager junta compus para ayudarlo.',
+      tech: 'En Spark: el cluster manager puede ser Standalone, YARN o Kubernetes. Reparte las máquinas.',
+    },
+    work: {
+      title: 'Paso 3 · Los workers pintan su parte',
+      lead: 'El driver repartió los datos: cada worker pinta solo sus 6 puntos y le manda un resumen.',
+      main: 'Todas las compus trabajan al mismo tiempo, cada una con su parte.',
+      tech: 'En Spark: cada parte es una partición y pintarla es una tarea que corre en un executor.',
     },
     combine: {
-      title: 'Paso 2 · El coordinador junta todo',
+      title: 'Paso 4 · El driver junta los resúmenes',
       lead: 'Con los resúmenes de todos, mueve cada centro al medio de su grupo.',
-      main: 'Cada compu mandó solo cuántos puntos pintó de cada color y dónde están. Con eso alcanza para mover los centros.',
-      tech: 'En un clúster: juntar es el reduce. Se mueve el cálculo, no los datos.',
-    },
-    auto: {
-      title: 'Paso 3 · Repetir hasta que no cambie',
-      lead: 'Ahora cada celular pinta solo. En cada vuelta los centros se acomodan un poco más.',
-      main: 'Entrenar un modelo es esto: repetir muchas veces lo mismo sobre los mismos datos.',
-      tech: 'En Spark los datos quedan en memoria; por eso cada vuelta es rápida.',
+      main: 'Por la red no viajaron los puntos: viajaron resúmenes chiquitos.',
+      tech: 'En Spark: juntar en el driver lo que devuelven las tareas es el reduce. Repetir hasta que no cambie es entrenar el modelo.',
     },
     fail: {
-      title: 'Paso 4 · ¿Y si se apaga una compu?',
-      lead: 'Tocá una compu para apagarla. Sus puntos pasan a otra y el trabajo sigue.',
-      main: '',
-      tech: 'En un clúster real se rompen máquinas todos los días. El coordinador repite ese trabajo en otra: eso es tolerancia a fallos.',
+      title: 'Paso 5 · ¿Y si se cae una compu?',
+      lead: 'Otra vuelta a mano. Mientras pintan, giramos la ruleta: a una compu se le corta todo.',
+      main: 'Si una compu se cae, el cluster manager se da cuenta y otra hace su parte.',
+      tech: 'En Spark: el driver vuelve a lanzar la tarea perdida en otro executor. Eso es tolerancia a fallos.',
     },
     end: {
       title: 'Lo que hicimos es lo que hace un clúster',
@@ -49,16 +59,22 @@
     },
   };
 
-  // Status -> icon and tone. Never color alone: every state has its own icon.
+  // Status -> icon, tone and words. Never color alone: every state has its own icon.
   const STATUS = {
     waiting: { icon: 'check', tone: 'ok', label: 'conectada' },
     painting: { icon: 'timer', tone: 'warn', label: 'pintando' },
-    sent: { icon: 'check', tone: 'ok', label: 'envió' },
+    done: { icon: 'hourglass', tone: 'ok', label: 'terminó el tiempo' },
+    joined: { icon: 'user-plus', tone: 'accent', label: 'se sumó' },
+    out: { icon: 'hand', tone: 'mute', label: 'no se sumó' },
+    driver: { icon: 'crown', tone: 'driver', label: 'driver' },
+    sent: { icon: 'send', tone: 'ok', label: 'envió el resumen' },
     idle: { icon: 'check', tone: 'ok', label: 'libre' },
-    working: { icon: 'zap', tone: 'accent', label: 'trabajando' },
-    off: { icon: 'power-off', tone: 'bad', label: 'apagada' },
+    working: { icon: 'zap', tone: 'accent', label: 'calculando' },
+    off: { icon: 'power-off', tone: 'bad', label: 'caída' },
     offline: { icon: 'wifi-off', tone: 'mute', label: 'sin conexión' },
   };
+  // In step 3 a connected phone that did not lend itself yet looks pending.
+  const NOT_YET = { icon: 'hand', tone: 'mute', label: 'todavía no se sumó' };
 
   const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="/icons.svg#${name}"/></svg>`;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -67,19 +83,25 @@
   const plural = (n, one, many) => `${nf.format(n)} ${n === 1 ? one : many}`;
   const nf1 = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const NAMES = ['Violeta', 'Celeste', 'Rosa'];
+  const swatch = (j) => `<i class="shape shape-${j}"></i>`;
 
-  // Times (ACTIVIDAD.md 9.1): under 60 s with one decimal, "14,2 s".
   function fmtTime(ms) {
     const sec = ms / 1000;
     if (sec < 59.95) return `${nf1.format(sec)} s`;
     const total = Math.round(sec);
     return `${Math.floor(total / 60)} min ${total % 60} s`;
   }
-  // The "one person alone" time is an estimate, so it is rounded and says "unos".
-  function fmtSolo(ms) {
+  // Estimates are rounded and say "unos".
+  function fmtAbout(ms) {
     const sec = ms / 1000;
     if (sec < 90) return `unos ${Math.max(5, Math.round(sec / 5) * 5)} segundos`;
     return `unos ${Math.max(2, Math.round(sec / 60))} minutos`;
+  }
+  function names(list, max = 4) {
+    if (!list.length) return '';
+    if (list.length <= max) return list.length === 1 ? list[0] : `${list.slice(0, -1).join(', ')} y ${list[list.length - 1]}`;
+    return `${list.slice(0, max).join(', ')} y ${list.length - max} más`;
   }
 
   const embedded = document.documentElement.dataset.embed === 'true';
@@ -113,7 +135,7 @@
 
   function connect() {
     if (socket) socket.close();
-    socket = io({ auth: { role: 'driver', key } });
+    socket = io({ auth: { role: 'projector', key } });
     socket.on('auth:error', (msg) => { socket.close(); showAuth(msg); });
     socket.on('connect', () => { $('#conn').hidden = true; });
     socket.on('disconnect', () => { $('#conn').hidden = false; });
@@ -125,32 +147,31 @@
   if (key) connect();
   else showAuth();
 
-  // ------------------------------------------------------------ rules
+  // ------------------------------------------------------------ rules (mirror the server)
 
   const connectedCount = (s) => s.phones.filter((p) => p.status !== 'offline').length;
-  const liveCount = (s) => s.phones.filter((p) => p.status !== 'offline' && p.status !== 'off').length;
+  const liveWorkers = (s) => s.phones.filter((p) => p.registered && p.status !== 'offline' && p.status !== 'off' && p.status !== 'driver');
 
-  // Phase changes the server accepts (ACTIVIDAD.md 6.3): lobby -> paint needs a
-  // phone, paint -> combine needs a submitted phone, and from combine on you
-  // can move freely among combine, auto, fail and end.
+  // Only forward, one step at a time; `reset` is the only way back.
   function canGo(s, id) {
-    if (!s || id === s.phase) return false;
-    if (s.phase === 'lobby') return id === 'paint' && connectedCount(s) > 0;
-    if (s.phase === 'paint') return id === 'combine' && s.progress.done > 0;
-    return ORDER.indexOf(id) >= ORDER.indexOf('combine');
+    if (!s || ORDER.indexOf(id) !== ORDER.indexOf(s.phase) + 1) return false;
+    if (id === 'solo') return connectedCount(s) > 0;
+    if (id === 'work') return liveWorkers(s).length > 0;
+    if (id === 'combine') return !!s.manual && s.manual.done > 0;
+    return true;
   }
 
-  function go(delta) {
+  function goNext() {
     if (!state) return;
-    const target = ORDER[ORDER.indexOf(state.phase) + delta];
+    const target = ORDER[ORDER.indexOf(state.phase) + 1];
     if (target && canGo(state, target)) send('phase', { phase: target });
   }
 
-  // In `fail` a round is allowed after convergence: it shows the work goes on without the lost phone.
-  const canRound = (s) => !s.busy && !s.spin && (s.phase === 'fail' || (s.phase === 'auto' && !s.converged));
-  // While the roulette spins the server ignores spin, kill, revive, round and run on.
-  const canKill = (s) => s.phase === 'fail' && !s.spin && liveCount(s) > 1;
-  const canSpin = (s) => s.phase === 'fail' && !s.spin && !s.busy && liveCount(s) > 1;
+  const canJoinFail = (s) => s.phase === 'fail' && !!s.manual && s.manual.done > 0 && !s.spin;
+  const canRound = (s) => s.phase === 'combine' && !s.busy && !s.converged;
+  const failCandidates = (s) => liveWorkers(s).filter((p) => p.parts > 0);
+  const canSpin = (s) => s.phase === 'fail' && !!s.manual && !s.spin && failCandidates(s).length > 1;
+  const canKill = (s) => s.phase === 'fail' && !!s.manual && !s.spin;
 
   // ------------------------------------------------------------ chrome
 
@@ -184,9 +205,14 @@
   $('#confirmYes').addEventListener('click', () => { askReset(false); send('reset'); });
   confirmBox.addEventListener('click', (e) => { if (e.target === confirmBox) askReset(false); });
 
-  const toggleRun = () => { if (state && (state.phase === 'auto' || state.phase === 'fail') && (state.running || (!state.converged && !state.spin))) send('run', { on: !state.running }); };
+  const toggleRun = () => { if (state && state.phase === 'combine' && (state.running || !state.converged)) send('run', { on: !state.running }); };
   const doRound = () => { if (state && canRound(state)) send('round'); };
   const doSpin = () => { if (state && canSpin(state)) send('spin'); };
+  const doJoin = () => {
+    if (!state) return;
+    if (state.phase === 'work' && canGo(state, 'combine')) send('phase', { phase: 'combine' });
+    else if (canJoinFail(state)) send('join');
+  };
 
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -194,10 +220,10 @@
     if (e.key === 'Escape') { toggleQr(false); askReset(false); return; }
     if (!confirmBox.hidden) return; // the dialog owns the keyboard while open
     const k = e.key.toLowerCase();
-    if (e.key === 'ArrowRight') go(1);
-    else if (e.key === 'ArrowLeft') go(-1);
+    if (e.key === 'ArrowRight') goNext();
     else if (e.key === ' ' || k === 'r') { e.preventDefault(); doRound(); }
     else if (k === 's') toggleRun();
+    else if (k === 'j') doJoin();
     else if (k === 'k') doSpin();
     else if (k === 'q') toggleQr();
     else if (k === 't') toggleTheme();
@@ -265,7 +291,7 @@
 
   const trailEls = [0, 1, 2].map((k) => {
     const g = mk('g', { class: `trail trail-${k}` }, trailG);
-    return { g, line: mk('polyline', {}, g), dots: mk('g', {}, g), len: -1 };
+    return { g, line: mk('polyline', {}, g), dots: mk('g', {}, g), sig: '' };
   });
   const centerEls = [0, 1, 2].map((k) => {
     const g = mk('g', { class: 'center' }, centersG);
@@ -294,13 +320,14 @@
       if (el.x !== pt.x || el.y !== pt.y) {
         el.g.setAttribute('transform', `translate(${pt.x} ${sy(pt.y)})`);
         el.x = pt.x; el.y = pt.y;
+        el.label = null;
       }
       if (el.label !== pt.label) {
         const first = el.label === null;
         el.body.replaceChildren(shape(pt.label, false));
-        if (!first) {
+        if (!first && pt.label >= 0) {
           // Replay the pop animation, with a small random delay so a whole
-          // phone's points do not all flash on the same frame.
+          // part does not flash on the same frame.
           el.body.classList.remove('pop');
           el.body.style.animationDelay = `${Math.floor(Math.random() * 260)}ms`;
           void el.body.getBoundingClientRect();
@@ -308,7 +335,7 @@
         }
         el.label = pt.label;
       }
-      const ringOn = showRings && pt.owner !== pt.home;
+      const ringOn = showRings && pt.moved;
       if (ringOn !== el.ringOn) {
         el.ring.setAttribute('visibility', ringOn ? 'visible' : 'hidden');
         el.ringOn = ringOn;
@@ -316,8 +343,7 @@
     });
 
     s.centers.forEach((c, k) => {
-      const g = centerEls[k];
-      g.style.transform = `translate(${c.x}px, ${sy(c.y)}px)`;
+      centerEls[k].style.transform = `translate(${c.x}px, ${sy(c.y)}px)`;
     });
     if (!centersPlaced) {
       // First placement must not glide in from the corner: enable the
@@ -340,7 +366,8 @@
   // ------------------------------------------------------------ compus grid
 
   const grid = $('#compusGrid');
-  const tiles = new Map(); // id -> { el, sig }
+  const compusTitle = $('#compusTitle');
+  const tiles = new Map(); // id -> { el, sig, id }
 
   // Roulette effects live in classes that a status change must not wipe out.
   const fx = { cands: new Set(), lit: null, blink: null };
@@ -351,12 +378,37 @@
   }
   const applyAllFx = () => tiles.forEach(applyTileFx);
 
+  // What a tap on a tile does in this state, or null.
+  function tileAction(s, p) {
+    if (s.phase === 'manager' && p.status !== 'offline' && p.status !== 'driver') return 'driver';
+    if (canKill(s) && p.registered && p.parts > 0 && ['painting', 'sent', 'idle'].includes(p.status)) return 'kill';
+    return null;
+  }
+
+  function tileExtra(s, p) {
+    if (s.phase === 'solo') return p.solo > 0 ? String(p.solo) : '';
+    if (p.inherited > 0) return `+${p.inherited}`;
+    return '';
+  }
+
   function renderCompus(s) {
-    $('#compusCount').textContent = String(connectedCount(s));
+    const titles = {
+      lobby: 'Compus conectadas', solo: 'Drivers pintando solos', manager: 'Compus en el clúster',
+    };
+    const inCluster = s.phones.filter((p) => p.registered).length;
+    const count = s.phase === 'manager' ? `${inCluster} de ${connectedCount(s) - (s.driver ? 1 : 0)}`
+      : ORDER.indexOf(s.phase) > ORDER.indexOf('manager') ? String(liveWorkers(s).length) : String(connectedCount(s));
+    const title = `${titles[s.phase] || 'Workers'}: <span class="mono">${count}</span>`;
+    if (compusTitle.innerHTML !== title) compusTitle.innerHTML = title;
+    const hint = $('#compusHint');
+    const hintText = s.phase === 'manager' ? 'Tocá una compu para cambiar quién es el driver.'
+      : canKill(s) ? 'Tocá un worker para que se caiga.' : '';
+    hint.textContent = hintText;
+    hint.hidden = !hintText;
+
     const n = s.phones.length;
     grid.dataset.size = n <= 12 ? 'm' : n <= 28 ? 's' : n <= 48 ? 'xs' : 'xxs';
     const seen = new Set();
-    const clickable = s.phase === 'fail';
     s.phones.forEach((p, idx) => {
       seen.add(p.id);
       let t = tiles.get(p.id);
@@ -364,28 +416,36 @@
         const el = document.createElement('button');
         el.type = 'button';
         el.setAttribute('role', 'listitem');
-        el.innerHTML = `<span class="t-ico"></span><span class="t-num mono"></span><span class="t-name"></span><span class="t-inh mono"></span>`;
+        el.innerHTML = '<span class="t-ico"></span><span class="t-num mono"></span><span class="t-name"></span><span class="t-inh mono"></span>';
         el.querySelector('.t-num').textContent = pad(p.id);
         el.addEventListener('click', () => {
-          if (state && canKill(state) && el.dataset.status !== 'off' && el.dataset.status !== 'offline') send('kill', { id: p.id });
+          if (!state) return;
+          const cur = state.phones.find((q) => q.id === p.id);
+          const action = cur && tileAction(state, cur);
+          if (action === 'driver') send('driver', { id: p.id });
+          else if (action === 'kill') send('kill', { id: p.id });
         });
         t = { el, sig: '', id: p.id };
         tiles.set(p.id, t);
       }
-      const sig = `${p.name}|${p.status}|${p.inherited}|${clickable}|${canKill(s)}`;
+      const action = tileAction(s, p);
+      const st = s.phase === 'manager' && p.status === 'waiting' ? NOT_YET : (STATUS[p.status] || STATUS.idle);
+      const extra = tileExtra(s, p);
+      const sig = `${p.name}|${p.status}|${s.phase}|${extra}|${action}`;
       if (t.sig !== sig) {
         t.sig = sig;
-        const st = STATUS[p.status] || STATUS.idle;
         const el = t.el;
         el.className = `tile tone-${st.tone}`;
         el.dataset.status = p.status;
-        el.disabled = !(clickable && p.status !== 'off' && p.status !== 'offline' && canKill(s));
-        el.classList.toggle('is-tappable', !el.disabled);
+        el.disabled = !action;
+        el.classList.toggle('is-tappable', !!action);
+        el.classList.toggle('is-kill', action === 'kill');
         el.querySelector('.t-ico').innerHTML = icon(st.icon);
         el.querySelector('.t-name').textContent = p.name;
-        el.querySelector('.t-inh').textContent = p.inherited > 0 ? `+${p.inherited}` : '';
+        el.querySelector('.t-inh').textContent = extra;
         el.title = `Compu ${pad(p.id)} · ${p.name} · ${st.label}`;
-        el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${clickable && !el.disabled ? '. Tocar para apagar' : ''}`);
+        const tap = action === 'driver' ? '. Tocar para hacerla driver' : action === 'kill' ? '. Tocar para que se caiga' : '';
+        el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${tap}`);
       }
       if (grid.children[idx] !== t.el) grid.insertBefore(t.el, grid.children[idx] || null);
       applyTileFx(t);
@@ -396,22 +456,14 @@
     }
   }
 
-  // ------------------------------------------------------------ rail & stage
+  // ------------------------------------------------------------ rail
 
-  const views = document.querySelectorAll('[data-view]');
-  let shownPhase = null;
-
-  function renderHead(s) {
-    const copy = COPY[s.phase];
-    $('#title').textContent = copy.title;
-    $('#lead').textContent = copy.lead;
-    $('#lead').hidden = !copy.lead;
-    const head = $('#stageHead');
-    head.classList.remove('enter');
-    void head.offsetWidth;
-    head.classList.add('enter');
-    const viewName = s.phase === 'lobby' ? 'lobby' : s.phase === 'end' ? 'end' : 'plot';
-    views.forEach((v) => { v.hidden = v.dataset.view !== viewName; });
+  function renderRoles(s) {
+    const show = ORDER.indexOf(s.phase) >= ORDER.indexOf('manager') && s.phase !== 'end';
+    $('#roles').hidden = !show;
+    if (!show) return;
+    const d = s.driver;
+    $('#roleDriver').textContent = d ? `${d.name}${d.connected ? '' : ' (sin conexión)'}` : 'El proyector';
   }
 
   function renderCard(s) {
@@ -424,22 +476,175 @@
     $('#cardTech').innerHTML = `${icon('layers')}<span>${esc(copy.tech)}</span>`;
   }
 
-  function renderExtras(s) {
-    // paint: how many phones are done
-    const paint = s.phase === 'paint';
-    $('#progressBlock').hidden = !paint;
-    if (paint) {
-      const { done, total } = s.progress;
-      $('#progressText').textContent = `Listos: ${done} de ${total}`;
-      $('#progressBar').style.width = total ? `${Math.round((100 * done) / total)}%` : '0%';
+  // ------------------------------------------------------------ stage
+
+  const views = document.querySelectorAll('[data-view]');
+  let shownHead = null;
+
+  function leadOf(s) {
+    if (s.phase === 'solo' && s.solo && s.solo.over) return 'Se terminó el tiempo. Una sola compu no llega con todos los datos.';
+    if (s.phase === 'fail' && !s.manual) return 'La vuelta terminó aunque se cayó una compu.';
+    return COPY[s.phase].lead;
+  }
+
+  function renderHead(s) {
+    const copy = COPY[s.phase];
+    const lead = leadOf(s);
+    const sig = `${s.phase}|${lead}`;
+    if (sig === shownHead) return;
+    const phaseChanged = !shownHead || !shownHead.startsWith(`${s.phase}|`);
+    shownHead = sig;
+    $('#title').textContent = copy.title;
+    $('#lead').textContent = lead;
+    $('#lead').hidden = !lead;
+    if (phaseChanged) {
+      const head = $('#stageHead');
+      head.classList.remove('enter');
+      void head.offsetWidth;
+      head.classList.add('enter');
+      const viewName = { lobby: 'lobby', solo: 'solo', manager: 'arch', end: 'end' }[s.phase] || 'plot';
+      views.forEach((v) => { v.hidden = v.dataset.view !== viewName; });
+    }
+  }
+
+  // ---------------- step 2: the driver alone
+
+  let soloEnd = null;
+  function renderSolo(s) {
+    const so = s.solo;
+    if (s.phase !== 'solo' || !so) { soloEnd = null; return; }
+    const end = so.over ? Date.now() : Date.now() + so.remainingMs;
+    if (soloEnd === null || Math.abs(end - soloEnd) > 600 || so.over) soloEnd = end;
+    tickSolo();
+    $('#soloJob').innerHTML = `Cada celular tiene <strong>${nf.format(so.total)}</strong> puntos para pintar solo.`;
+    $('#soloClockBox').hidden = so.over;
+    $('#soloJob').hidden = so.over;
+    $('#soloResult').hidden = !so.over;
+    if (so.over) {
+      const top = so.top;
+      const finished = top && top.done >= so.total;
+      $('#soloBig').textContent = finished ? `¡${top.name} pintó todo!` : 'Nadie terminó.';
+      $('#soloTopLine').innerHTML = top
+        ? `La que más pintó: <strong>${esc(top.name)}</strong>, ${nf.format(top.done)} de ${nf.format(so.total)}.`
+        : 'Nadie llegó a pintar.';
+      $('#soloEstimate').innerHTML = `A este ritmo, un driver solo tardaría <strong>${fmtAbout(so.estimateMs)}</strong>.`;
+      $('#soloNext').textContent = top ? `${top.name} va a ser el driver del clúster.` : '';
+    }
+    const leaders = so.leaders || [];
+    $('#leaders').innerHTML = leaders.length
+      ? leaders.map((l, i) => `<li class="leader${i === 0 ? ' is-first' : ''}">
+          <span class="ld-rank">${i + 1}</span><span class="ld-name">${esc(l.name)}</span>
+          <span class="ld-num mono">${nf.format(l.done)}</span>
+          <span class="ld-bar"><i style="width:${Math.min(100, Math.round((100 * l.done) / so.total))}%"></i></span></li>`).join('')
+      : '<li class="ld-empty">Todavía nadie pintó.</li>';
+    $('#soloSum').textContent = so.players
+      ? `${plural(so.players, 'persona pintó', 'personas pintaron')}, cada una con su copia de los ${nf.format(so.total)} puntos.`
+      : '';
+  }
+
+  function tickSolo() {
+    if (soloEnd === null) return;
+    const sec = Math.ceil(Math.max(0, soloEnd - Date.now()) / 1000);
+    const el = $('#soloClock');
+    if (el.textContent !== String(sec)) el.textContent = String(sec);
+    $('#soloClockBox').classList.toggle('is-low', sec <= 5);
+  }
+  setInterval(tickSolo, 200);
+
+  // ---------------- step 3: the cluster manager
+
+  function renderArch(s) {
+    if (s.phase !== 'manager') return;
+    const d = s.driver;
+    $('#archDriver').textContent = d ? d.name : 'El proyector';
+    $('#archDriverNote').textContent = d ? 'Pintó más que nadie y tiene todos los datos' : 'Tiene todos los datos';
+    const pool = s.phones.filter((p) => p.registered && p.status !== 'offline' && p.status !== 'off').map((p) => p.name);
+    const count = $('#poolCount');
+    if (count.textContent !== String(pool.length)) {
+      count.textContent = String(pool.length);
+      if (!reducedMotion()) {
+        count.classList.remove('bump');
+        void count.offsetWidth;
+        count.classList.add('bump');
+      }
+    }
+    $('#poolNames').textContent = pool.length ? names(pool) : 'Todavía ninguna. Sumá la tuya desde el celular.';
+    $('#archFoot').innerHTML = d
+      ? `Cuando <strong>${esc(d.name)}</strong> pida compus desde su celular, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.`
+      : 'Cuando el driver pida compus, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.';
+  }
+
+  // ---------------- steps 3 to 5: plot side
+
+  function countsHtml(counts) {
+    return counts.map((c, j) => `<span class="tot">${swatch(j)}<b>${NAMES[j]}</b><span class="mono">${nf.format(c)}</span></span>`).join('');
+  }
+
+  const inboxEl = $('#inbox');
+  let inboxSig = '';
+  function renderInbox(s) {
+    const show = !!s.manual && (s.phase === 'work' || s.phase === 'fail');
+    inboxEl.hidden = !show || !s.inbox.length;
+    if (!show) { inboxSig = ''; return; }
+    const last = s.inbox.slice(-5).reverse();
+    const sig = last.map((e) => e.part).join(',');
+    if (sig === inboxSig) return;
+    const fresh = inboxSig ? last[0] && !inboxSig.split(',').includes(String(last[0].part)) : false;
+    inboxSig = sig;
+    inboxEl.innerHTML = last.map((e, i) => `<li class="${i === 0 && fresh && !reducedMotion() ? 'is-new' : ''}">
+        <span class="in-name">${esc(e.by)}${e.from !== e.by ? `<small>hizo la parte de ${esc(e.from)}</small>` : ''}</span>
+        <span class="in-counts">${e.counts.map((c, j) => `<span>${swatch(j)}<span class="mono">${c}</span></span>`).join('')}</span></li>`).join('');
+  }
+
+  function renderSide(s) {
+    // Summaries arriving at the driver (manual rounds).
+    const manual = !!s.manual && (s.phase === 'work' || s.phase === 'fail');
+    $('#partsBlock').hidden = !manual;
+    if (manual) {
+      const { done, total } = s.manual;
+      $('#partsDone').textContent = nf.format(done);
+      $('#partsTotal').textContent = nf.format(total);
+      $('#partsBar').style.width = total ? `${Math.round((100 * done) / total)}%` : '0%';
+      const alive = liveWorkers(s).length;
+      $('#partsNote').textContent = s.phase === 'fail'
+        ? `${plural(total, 'parte', 'partes')} y ${plural(alive, 'compu viva', 'compus vivas')}.`
+        : done >= total ? 'Llegaron todos: el driver ya puede juntar.' : 'El driver espera a que lleguen todos.';
+    }
+    renderInbox(s);
+
+    // A fall.
+    const lf = s.phase === 'fail' && s.lastFail;
+    $('#failCard').hidden = !lf || !!s.spin;
+    if (lf) {
+      const why = lf.cause === 'lost' ? `La compu de <strong>${esc(lf.victim)}</strong> no responde: se desconectó. ` : `Se cayó la compu de <strong>${esc(lf.victim)}</strong>. `;
+      $('#failText').innerHTML = `${why}El cluster manager le pasó su parte a <strong>${esc(lf.heir)}</strong>.`;
     }
 
-    // auto: round counter and bars
-    const auto = s.phase === 'auto';
-    $('#roundBlock').hidden = !auto;
-    if (auto) {
+    // The join in step 6: nothing was lost.
+    const j = s.join;
+    const joined = s.phase === 'fail' && !s.manual && j;
+    $('#joinCard').hidden = !joined;
+    if (joined) {
+      const filled = j.filled ? ` Faltaban ${plural(j.filled, 'parte', 'partes')}: las terminó el driver.` : '';
+      $('#joinText').innerHTML = `Llegaron las <strong>${nf.format(j.parts)} partes</strong> con <strong>${plural(j.workers, 'compu', 'compus')}</strong>. `
+        + `${j.rescued ? 'No se perdió nada.' : 'El resultado está completo.'}${filled}`;
+    }
+
+    // Step 5: what traveled and how long it took.
+    const combine = s.phase === 'combine';
+    const stat = $('#stat');
+    stat.hidden = !combine || !j || s.round > 1;
+    if (!stat.hidden) {
+      const summaries = j.parts - j.filled;
+      stat.innerHTML = `Por la red viajaron <strong>${plural(summaries, 'resumen', 'resúmenes')}</strong>, no <strong>${plural(j.points, 'punto', 'puntos')}</strong>.`;
+    }
+    renderVersus(s);
+
+    const rounds = combine && (s.round > 1 || s.running || s.busy);
+    $('#roundBlock').hidden = !rounds;
+    if (rounds) {
       $('#roundLabel').textContent = `Vuelta ${s.round}`;
-      $('#roundBusy').textContent = s.busy ? `Pintando: ${s.progress.done} de ${s.progress.total}` : (s.converged ? 'Terminamos' : '');
+      $('#roundBusy').textContent = s.busy ? `Calculando: ${s.progress.done} de ${s.progress.total}` : (s.converged ? 'Terminamos' : '');
       const max = Math.max(...s.shifts, 0.0001);
       const bars = $('#shiftBars');
       const want = s.shifts.length;
@@ -451,99 +656,55 @@
       });
     }
 
-    // fail: what happened to the last phone
-    const lf = s.phase === 'fail' && s.lastFail;
-    $('#failCard').hidden = !lf || !!s.spin;
-    if (lf) {
-      $('#failText').innerHTML = `Se apagó la compu de <strong>${esc(lf.victim)}</strong>. `
-        + `${lf.points === 1 ? 'Su punto ahora lo pinta' : `Sus ${nf.format(lf.points)} puntos ahora los pinta`} <strong>${esc(lf.heir)}</strong>. `
-        + 'No se perdió nada.';
-    }
+    const totals = $('#totals');
+    totals.hidden = !(combine || joined);
+    if (!totals.hidden) totals.innerHTML = countsHtml(s.totals);
 
-    // combine: the highlighted fact, next to the drawing
-    const stat = $('#stat');
-    stat.hidden = s.phase !== 'combine';
-    renderVersus(s);
-    renderRace(s);
-    if (!stat.hidden) {
-      stat.innerHTML = `Por la red viajaron <strong>${plural(s.stats.summaries, 'resumen', 'resúmenes')}</strong>, no <strong>${plural(s.stats.points, 'punto', 'puntos')}</strong>.`;
-    }
-
-    $('#doneBanner').hidden = !(auto && s.converged);
-
-    if (s.phase === 'end') {
-      $('#endNums').textContent = `${plural(s.stats.phones, 'compu', 'compus')} · ${plural(s.stats.points, 'punto', 'puntos')} · ${plural(s.round, 'vuelta', 'vueltas')}`;
-      const pod = (s.race && s.race.podium) || [];
-      const endPod = $('#endPodium');
-      endPod.hidden = !pod.length;
-      if (pod.length) {
-        endPod.innerHTML = icon('trophy') + `<span>Podio de pintura: ${pod.map((p, i) => `${i + 1}. ${esc(p.name)} ${fmtTime(p.score)}`).join(' · ')}</span>`;
-      }
-    }
-  }
-
-  // ------------------------------------------------------------ race (paint) and versus (combine)
-
-  const podiumEl = $('#podium');
-  let podiumSig = null;
-  let podiumIds = null; // null until the first state: a reload must not animate the whole podium
-
-  function renderRace(s) {
-    const r = s.race || {};
-    const pod = r.podium || [];
-    const pen = (r.penaltyMs || 3000) / 1000;
-    $('#raceCard').hidden = s.phase !== 'paint';
-    $('#raceNote').textContent = `Cada error suma ${nf.format(pen)} s.`;
-    const sig = pod.map((p) => `${p.id}:${p.name}:${p.ms}:${p.mistakes}`).join('|');
-    if (sig !== podiumSig) {
-      podiumSig = sig;
-      const fresh = new Set(podiumIds ? pod.filter((p) => !podiumIds.has(p.id)).map((p) => p.id) : []);
-      if (!pod.length) {
-        podiumEl.innerHTML = '<li class="pod-empty">Todavía nadie terminó.</li>';
-      } else {
-        podiumEl.innerHTML = pod.map((p, i) => {
-          const miss = p.mistakes > 0
-            ? `<span class="pod-pen">+${nf.format(p.mistakes * pen)} s · ${plural(p.mistakes, 'error', 'errores')}</span>` : '';
-          return `<li class="pod-row rank-${i + 1}${fresh.has(p.id) && !reducedMotion() ? ' is-new' : ''}">`
-            + `<span class="pod-rank">${i + 1}</span><span class="pod-name">${esc(p.name)}</span>`
-            + `<span class="pod-time">${fmtTime(p.ms)}</span>${miss}</li>`;
-        }).join('');
-      }
-    }
-    podiumIds = new Set(pod.map((p) => p.id));
+    $('#doneBanner').hidden = !(combine && s.converged);
   }
 
   const versus = $('#versus');
   let versusKey = '';
-
   function renderVersus(s) {
-    const r = s.race || {};
-    const show = s.phase === 'combine' && r.parallelMs != null && r.soloMs != null;
+    const j = s.join;
+    const show = s.phase === 'combine' && j && j.parallelMs != null && s.round <= 1 && !s.busy;
     versus.hidden = !show;
     if (!show) { versusKey = ''; return; }
-    const key = `${r.parallelMs}|${r.soloMs}`;
+    const key = `${j.parallelMs}|${j.soloMs}`;
     if (key === versusKey) return;
     versusKey = key;
-    $('#vsTeamVal').textContent = fmtTime(r.parallelMs);
-    $('#vsSoloVal').textContent = fmtSolo(r.soloMs);
-    $('#vsNote').textContent = r.slowest ? `El grupo terminó cuando terminó el último: ${r.slowest.name}.` : '';
+    $('#vsTeamVal').textContent = fmtTime(j.parallelMs);
+    $('#vsSoloVal').textContent = fmtAbout(j.soloMs);
+    $('#vsNote').textContent = j.slowest ? `El clúster terminó cuando terminó el último worker: ${j.slowest}.` : '';
     // Same scale for both bars. The short one lands first, the long one keeps growing.
-    const scale = Math.max(r.parallelMs, r.soloMs, 1);
+    const scale = Math.max(j.parallelMs, j.soloMs, 1);
     const team = $('#vsTeamBar');
     const solo = $('#vsSoloBar');
-    const bars = [team, solo];
-    bars.forEach((b) => { b.classList.add('no-anim'); b.style.width = '0%'; });
+    [team, solo].forEach((b) => { b.classList.add('no-anim'); b.style.width = '0%'; });
     void versus.offsetWidth;
-    bars.forEach((b) => b.classList.remove('no-anim'));
-    team.style.width = `${Math.max(1.5, (100 * r.parallelMs) / scale)}%`;
-    solo.style.width = `${Math.max(1.5, (100 * r.soloMs) / scale)}%`;
+    [team, solo].forEach((b) => b.classList.remove('no-anim'));
+    team.style.width = `${Math.max(1.5, (100 * j.parallelMs) / scale)}%`;
+    solo.style.width = `${Math.max(1.5, (100 * j.soloMs) / scale)}%`;
+  }
+
+  function renderEnd(s) {
+    if (s.phase !== 'end') return;
+    $('#endDriverRow').textContent = s.driver ? `${s.driver.name}, que tenía todo el trabajo` : 'El proyector, que tenía todo el trabajo';
+    const st = s.stats;
+    const parts = [
+      plural(st.parts, 'parte', 'partes'),
+      plural(st.points, 'punto', 'puntos'),
+      plural(s.round, 'vuelta', 'vueltas'),
+    ];
+    if (st.fails) parts.push(`${plural(st.fails, 'compu caída', 'compus caídas')} y ningún dato perdido`);
+    $('#endNums').textContent = parts.join(' · ');
   }
 
   // ------------------------------------------------------------ roulette
 
   const spinBanner = $('#spinBanner');
-  let spinHandled = 0;   // last spin.n whose animation we started
-  let spinLive = null;   // { victimId, timers } while a spin is on screen
+  let spinHandled = 0; // last spin.n whose animation we started
+  let spinLive = null; // { victim, timers } while a spin is on screen
   let firstState = true;
   let blinkTimer = 0;
 
@@ -640,9 +801,11 @@
   }
 
   function renderParty(s) {
-    if (prevConverged === false && s.converged) party();
+    if (prevConverged === false && s.converged && s.phase === 'combine') party();
     prevConverged = s.converged;
   }
+
+  // ------------------------------------------------------------ actions
 
   // Buttons are rebuilt only when their set or labels change, so a click is never
   // lost to a re-render in the middle of a press.
@@ -653,20 +816,17 @@
 
   function renderActions(s) {
     const defs = [];
-    if (s.phase === 'auto' || s.phase === 'fail') {
-      if (s.phase === 'fail') {
-        defs.push({ id: 'spin', label: 'Girar la ruleta', ico: 'dices', disabled: !canSpin(s), run: doSpin });
-      }
+    if (s.phase === 'combine') {
       defs.push({ id: 'round', label: 'Otra vuelta', ico: 'rotate-ccw', disabled: !canRound(s), run: doRound });
-      if (s.phase === 'auto') {
-        defs.push(s.running
-          ? { id: 'run', label: 'Pausar', ico: 'pause', disabled: false, run: toggleRun }
-          : { id: 'run', label: 'Seguir solo', ico: 'play', disabled: s.converged || !!s.spin, run: toggleRun });
-      }
-      if (s.phase === 'fail') {
-        const anyOff = s.phones.some((p) => p.status === 'off') || !!s.lastFail;
-        defs.push({ id: 'revive', label: 'Prender todas', ico: 'power', disabled: !anyOff || !!s.spin, run: () => send('revive') });
-      }
+      defs.push(s.running
+        ? { id: 'run', label: 'Pausar', ico: 'pause', disabled: false, run: toggleRun }
+        : { id: 'run', label: 'Repetir solo', ico: 'play', disabled: s.converged, run: toggleRun });
+    }
+    if (s.phase === 'fail') {
+      defs.push({ id: 'spin', label: 'Girar la ruleta', ico: 'dices', disabled: !canSpin(s), run: doSpin });
+      const anyOff = s.phones.some((p) => p.status === 'off');
+      defs.push({ id: 'revive', label: 'Prender todas', ico: 'power', disabled: !anyOff || !!s.spin, run: () => send('revive') });
+      if (s.manual) defs.push({ id: 'join', label: 'Juntar resúmenes', ico: 'merge', disabled: !canJoinFail(s), run: doJoin });
     }
     if (s.phase === 'end') {
       defs.push({ id: 'reset', label: 'Reiniciar actividad', ico: 'rotate-ccw', disabled: false, run: () => askReset(true) });
@@ -686,10 +846,11 @@
     }
 
     const main = {
-      lobby: { label: 'Empezar: repartir los puntos', to: 'paint', ico: 'arrow-right' },
-      paint: { label: 'Juntar los resultados', to: 'combine', ico: 'arrow-right' },
-      combine: { label: 'Repetir', to: 'auto', ico: 'repeat' },
-      auto: { label: 'Siguiente: apagar una compu', to: 'fail', ico: 'arrow-right' },
+      lobby: { label: 'Empezar: cada uno es el driver', to: 'solo', ico: 'arrow-right' },
+      solo: { label: 'Siguiente: aparece el cluster manager', to: 'manager', ico: 'arrow-right' },
+      manager: { label: 'Pedir compus al cluster manager', to: 'work', ico: 'server' },
+      work: { label: 'Juntar resúmenes', to: 'combine', ico: 'merge' },
+      combine: { label: 'Siguiente: se cae una compu', to: 'fail', ico: 'arrow-right' },
       fail: { label: 'Cierre', to: 'end', ico: 'arrow-right' },
       end: null,
     }[s.phase];
@@ -697,7 +858,10 @@
     if (main) {
       mainBtn.innerHTML = `<span>${esc(main.label)}</span>${icon(main.ico)}`;
       mainBtn.disabled = !canGo(s, main.to);
-      mainBtn.classList.toggle('is-ready', s.phase === 'paint' && s.progress.total > 0 && s.progress.done >= s.progress.total);
+      const ready = (s.phase === 'work' && s.manual && s.manual.total > 0 && s.manual.done >= s.manual.total)
+        || (s.phase === 'solo' && s.solo && s.solo.over)
+        || (s.phase === 'fail' && !s.manual);
+      mainBtn.classList.toggle('is-ready', !!ready);
       mainAction = main.to;
     } else {
       mainAction = null;
@@ -710,23 +874,25 @@
   function render() {
     const s = state;
     if (!s) return;
-    if (s.phase !== shownPhase) {
-      shownPhase = s.phase;
-      document.body.dataset.phase = s.phase;
-      renderHead(s);
-    }
+    document.body.dataset.phase = s.phase;
+    document.body.dataset.manual = s.manual ? 'true' : 'false';
+    renderHead(s);
     const addr = (s.publicUrl || '').replace(/^https?:\/\//, '');
     $('#joinUrl').textContent = addr || '…';
     $('#lobbyUrl').innerHTML = addr ? esc(addr).replace(/:(\d+)$/, '<wbr>:$1') : '…';
     $('#overlayUrl').textContent = addr;
 
     renderStepper(s);
+    renderRoles(s);
     renderCompus(s);
     renderSpin(s);
     renderCard(s);
-    renderExtras(s);
+    renderSolo(s);
+    renderArch(s);
+    renderSide(s);
+    renderEnd(s);
     renderActions(s);
-    if (s.phase !== 'lobby' && s.phase !== 'end') renderPlot(s);
+    if (['work', 'combine', 'fail'].includes(s.phase)) renderPlot(s);
     renderParty(s);
   }
 })();

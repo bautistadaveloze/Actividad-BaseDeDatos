@@ -3,9 +3,11 @@
 // Fake phones for rehearsing without a class:
 //   npm run bots -- 25            (25 bots against localhost:3000)
 //   URL=https://... npm run bots -- 10
-// Bots join, paint by waiting 2–9 s like a person would (with a few mistakes,
-// as people make), and answer every task after 400–900 ms with sums they
-// really compute.
+// Bots play every step like a person would: they paint alone at a human pace
+// (one point every 0.8–1.8 s), lend their phone to the cluster manager a few
+// seconds after it appears, paint their part and send the summary, and answer
+// the automatic rounds with sums they really compute. A bot that ends up as
+// the driver does nothing: the projector buttons drive the class.
 
 const { io } = require('socket.io-client');
 const km = require('../lib/kmeans');
@@ -17,31 +19,59 @@ const NAMES = ['Ana', 'Bruno', 'Caro', 'Dani', 'Eze', 'Flor', 'Gonza', 'Hernán'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const between = (a, b) => a + Math.random() * (b - a);
-// Most people paint everything right; a few slip once or twice, very few more.
-function mistakes() {
-  const r = Math.random();
-  return r < 0.65 ? 0 : r < 0.85 ? 1 : r < 0.96 ? 2 : 3;
-}
 
 function bot(i) {
   const name = `${NAMES[i % NAMES.length]}${i >= NAMES.length ? ` ${Math.floor(i / NAMES.length) + 1}` : ''}`;
   const socket = io(URL, { auth: { role: 'worker', token: `bot-${i}`, name } });
   let state = null;
-  let paintedKey = null;
+  let soloSeed = null;
+  let registering = false;
+  const painting = new Set(); // `${dataKey}:${part}` in progress or sent
+
+  async function paintSolo(seed) {
+    let done = state.me.soloDone || 0;
+    const pace = between(800, 1800);
+    while (state && state.phase === 'solo' && state.solo && state.solo.seed === seed && !state.solo.over) {
+      await sleep(pace * between(0.7, 1.3));
+      if (!state.solo || state.solo.over || done >= state.solo.total) break;
+      done += 1;
+      socket.emit('solo:progress', { done });
+    }
+  }
+
+  async function paintPart(key, partId) {
+    await sleep(between(3000, 10000));
+    if (!state || !state.manual || state.me.off) { painting.delete(key); return; }
+    socket.emit('part:submit', { part: partId });
+  }
 
   socket.on('state', async (s) => {
     state = s;
-    if (s.phase !== 'paint' || s.me.sent || s.me.off || !s.points.length || paintedKey === s.paintKey) return;
-    paintedKey = s.paintKey;
-    await sleep(between(2000, 9000));
-    if (state.phase === 'paint' && !state.me.sent) socket.emit('paint:submit', { mistakes: mistakes() });
+    if (s.phase === 'solo' && s.solo && !s.solo.over && s.solo.seed !== soloSeed) {
+      soloSeed = s.solo.seed;
+      paintSolo(soloSeed);
+    }
+    if (['manager', 'work', 'fail'].includes(s.phase) && s.me.role === 'none' && !s.me.off && !registering) {
+      registering = true;
+      await sleep(between(800, 5000));
+      if (state && state.me.role === 'none') socket.emit('register');
+      registering = false;
+    }
+    if (s.manual && !s.me.off) {
+      for (const part of s.parts) {
+        const key = `${s.dataKey}:${part.id}`;
+        if (part.sent || painting.has(key)) continue;
+        painting.add(key);
+        paintPart(key, part.id);
+      }
+    }
   });
 
   socket.on('task', async ({ round, centers }) => {
     await sleep(between(400, 900));
     // Uses every point it holds now, inherited ones included.
-    const sums = km.partialSums(state ? state.points : [], centers);
-    socket.emit('task:result', { round, sums });
+    const points = state ? state.parts.flatMap((part) => part.points) : [];
+    socket.emit('task:result', { round, sums: km.partialSums(points, centers) });
   });
   return socket;
 }

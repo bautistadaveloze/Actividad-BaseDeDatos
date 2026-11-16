@@ -126,7 +126,7 @@ El objetivo de esta parte es que el público sienta el problema antes de ver cua
 - Después la cocina: el jefe de cocina reparte los pedidos (driver), el encargado dice qué cocineros están libres (cluster manager) y los cocineros cocinan (workers). Esta analogía la podés retomar en las siguientes diapositivas.
 - Aclará que los nombres son los de Spark, pero la idea está en cualquier clúster: cuando veamos Hadoop, YARN va a ser su cluster manager.
 
-**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de coordinador (driver) y los celulares de computadoras que trabajan (workers).
+**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de cluster manager, un alumno hace de driver desde su celular y el resto de los celulares son los workers.
 
 **Pasaje:** "Con un jefe, un encargado y cocineros, repartir el trabajo parece fácil. Pero no lo es".
 
@@ -605,20 +605,20 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 
 **Pasaje:** "Y ahora, en vez de escucharlo, lo van a vivir".
 
-### 42 · Seis pasos, unos siete minutos
+### 42 · Siete pasos, unos siete minutos
 
 **Idea:** anticipar qué va a pasar en la actividad para que nadie se pierda.
 
 **Cómo explicarlo:**
-- Contá los pasos rápido, sin detalle:
+- Contá los pasos rápido, sin detalle (si la diapositiva todavía dice "Seis pasos", usá esta lista):
   1. Se unen con el celular.
-  2. Cada uno pinta sus 6 puntos del color del centro más cercano.
-  3. El coordinador junta los resúmenes y mueve los centros.
-  4. Los celulares repiten solos, vuelta tras vuelta.
-  5. Se apaga una compu y otra hace su parte.
-  6. Cierre: qué fue cada cosa.
-- Lo importante: **el proyector es el coordinador (driver) y cada celular es una compu (worker) con su parte de los datos, 6 puntos.**
-- En la actividad se habla con palabras comunes (compu, coordinador, resumen, vuelta). Los nombres técnicos aparecen en el proyector, al lado, para que los conectes con lo que explicaste.
+  2. Cada uno es **el driver**, solo con todos los puntos y 20 segundos. Quien pinta más queda como driver.
+  3. Aparece **el cluster manager** (el proyector) y cada uno le presta su celular.
+  4. Los celulares son **workers**: cada uno pinta su parte de 6 puntos y le manda un resumen al driver.
+  5. El driver junta los resúmenes, mueve los centros y repite hasta que no cambian.
+  6. Se cae una compu y otra hace su parte: no se pierde nada.
+  7. Cierre: qué fue cada cosa.
+- Es el mismo orden de las diapositivas 26 a 32: el driver, el driver pide recursos, los workers, las particiones, las tareas y los resultados que vuelven.
 
 ### 43 · El clúster son ustedes
 
@@ -628,9 +628,9 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 - Instrucciones:
   1. Escaneen el QR o entren a la dirección.
   2. Pongan su nombre.
-  3. Esperen su parte de los datos.
+  3. Esperen: van a arrancar siendo el driver.
 - En este momento cambiá a la pestaña del proyector (`/driver`), que muestra el QR grande.
-- Esperá a que entre la mayoría antes de arrancar. Quien entra tarde recibe puntos igual.
+- Esperá a que entre la mayoría antes de arrancar. Quien entra tarde se puede sumar como worker en cualquier paso.
 
 **Para entender vos:** antes de la clase completá `[cluster.tudominio.com]` en la diapositiva con la dirección real y probá entrar desde un celular con datos móviles, no solo con el wifi de tu casa. Para ensayar sin gente, `npm run bots -- 25` simula 25 celulares. El paso a paso de la actividad está en `guiones/03-actividad-web.md`.
 
@@ -648,11 +648,12 @@ En cada paso conectá lo que pasa en los celulares con una diapositiva:
 
 | Paso | Qué está pasando | Qué decir | Diapositiva |
 |---|---|---|---|
-| Unirse | Cada celular entra y recibe un número | "Cada celular es una compu del clúster; el proyector es el coordinador" | 6–7 |
-| Pintar | Cada uno pinta sus 6 puntos del color del centro más cercano | "Esto es el map: cada uno solo con su parte, sin hablar con nadie" | 11, 19 |
-| Juntar | El coordinador junta los resúmenes y mueve los centros | "Viajaron resúmenes, no puntos: se mueve el cálculo, no los datos. Es la opción C" | 20, 32 |
-| Repetir | Los celulares pintan solos, vuelta tras vuelta | "Entrenar un modelo es repetir esto hasta que los centros no se mueven. Por eso conviene tener los datos en memoria" | 17, 22, 33 |
-| Se apaga una | Se apaga una compu y otra recibe sus puntos | "No se perdió nada: el coordinador le dio ese trabajo a otra" | 14, 36 |
+| Unirse | Cada celular entra y recibe un número | "Cada celular es una compu" | 6 |
+| Driver solo | Cada uno pinta solo todos los puntos durante 20 segundos y nadie termina | "El driver es el programa que tiene el trabajo. Solo, con todos los datos, no llega" | 5, 26 |
+| Cluster manager | Aparece el proyector como cluster manager y la clase le presta sus celulares | "El cluster manager no trabaja: sabe qué compus están libres y se las presta al driver" | 7, 27 |
+| Workers | Cada uno pinta su parte de 6 puntos y le manda un resumen al driver | "Cada parte es una partición; pintarla es una tarea. Viajan resúmenes, no puntos" | 28–32 |
+| Juntar | El driver junta los resúmenes, mueven los centros y repiten solos | "Juntar es el reduce. Repetir hasta que no cambie es entrenar. Por eso conviene la memoria" | 20, 22, 33 |
+| Se cae una | Se cae una compu y otra pinta su parte | "No se perdió nada: el cluster manager se dio cuenta y la tarea se hizo en otra compu" | 14, 36 |
 | Cierre | Tabla del aula contra un clúster de verdad | "Todo lo que hicimos a mano, MLlib lo hace en una línea" | 38 |
 
 ---

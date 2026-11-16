@@ -48,7 +48,7 @@ Expliquen en una frase la diferencia con el modelo relacional:
 
 > “Una base relacional es adecuada para registrar operaciones y transacciones; Spark sirve para analizar grandes conjuntos y entrenar modelos. Pueden complementarse: la base registra ventas y Spark las analiza.”
 
-Al minuto 10, avancen a la última diapositiva. La consola del driver y el QR ya están integrados; sigan el [guion de la actividad web](./03-actividad-web.md).
+Al minuto 10, avancen a la última diapositiva. La pantalla del proyector y el QR ya están integrados; sigan el [guion de la actividad web](./03-actividad-web.md).
 
 ## Después de la actividad web · 17:00–20:00
 

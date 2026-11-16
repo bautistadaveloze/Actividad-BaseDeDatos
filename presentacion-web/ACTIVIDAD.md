@@ -4,36 +4,38 @@ Este documento describe la actividad en vivo (celulares + proyector) y el contra
 
 ## 1. Objetivo
 
-Que alguien que no sabe nada del tema entienda, haciéndolo, cuatro ideas:
+Que alguien que recién empieza con el tema entienda, haciéndolo y en el mismo orden en que funciona Spark, cinco ideas:
 
-1. Los datos se reparten: cada computadora tiene solo su parte.
-2. Cada computadora trabaja sobre su parte y manda **un resumen chico**, no los datos.
-3. Un coordinador junta los resúmenes. Repetir eso muchas veces es **entrenar un modelo** (K-Means).
-4. Si una computadora se apaga, otra hace su parte y no se pierde nada.
+1. **Driver:** el programa que tiene el trabajo. Solo, con todos los datos, no da abasto.
+2. **Cluster manager:** sabe qué compus están libres y se las presta al driver.
+3. **Workers:** cada uno recibe una parte de los datos, la procesa al mismo tiempo que los demás y le manda al driver **un resumen chico**, no los datos.
+4. El driver junta los resúmenes. Repetir eso hasta que no cambie es **entrenar un modelo** (K-Means).
+5. **Tolerancia a fallos:** si una compu se cae, otra hace su parte y no se pierde nada.
 
-Dura entre 5 y 8 minutos.
+Dura unos 7 minutos. Cada alumno pasa por los roles: primero es el driver solo, después presta su celular y trabaja como worker. Quien pintó más en el primer paso queda como el driver del clúster y maneja desde su celular.
 
 ## 2. Principios (obligatorios)
 
-- **Una sola acción por pantalla en el celular.** Nada de elegir entre opciones técnicas.
-- **Sin números para leer:** no se muestran coordenadas, bytes, sumas ni fórmulas. Todo se resuelve mirando el dibujo.
-- **Sin jerga en el celular.** En el celular nunca aparecen las palabras executor, partición, driver, shuffle, lineage, map, reduce, centroide ni iteración.
-- **La jerga solo en el proyector, y siempre después de la palabra común.** Ejemplo: "Coordinador (driver)". Así quien presenta la conecta con la teoría.
-- **Nadie se queda afuera:** quien entra tarde recibe puntos igual; quien se equivoca puede reintentar; si alguien no termina, la actividad sigue.
+- **Una sola acción por pantalla en el celular.** Pintar, sumar la compu, enviar el resumen, pedir compus, juntar.
+- **Sin números para leer:** no se muestran coordenadas, sumas ni fórmulas. Todo se resuelve mirando el dibujo.
+- **Pocas palabras técnicas, siempre las mismas:** driver, cluster manager y worker aparecen en el celular porque son el tema de la actividad. El resto (partición, task, executor, reduce, iteración) solo en el proyector y siempre después de la palabra común.
+- **Nadie se queda afuera:** quien entra tarde puede sumar su compu en cualquier paso; quien se equivoca puede reintentar; si alguien no termina, el proyector puede juntar igual.
+- **El proyector nunca depende del celular del driver:** todo lo que hace el driver también se puede hacer desde el proyector.
 - Textos en español rioplatense (vos), frases cortas. Sin emojis: se usan los íconos de `/icons.svg`.
 
 ## 3. Vocabulario
 
-| En el celular y en voz alta | Etiqueta técnica (solo proyector) |
+| En el celular y en voz alta | En el proyector, al lado |
 |---|---|
-| compu | worker |
-| coordinador (el proyector) | driver |
-| tus puntos / tu parte | partición |
-| centro | centroide |
-| pintar | tarea (map) |
-| resumen | resultado parcial |
+| driver | driver (el programa principal) |
+| cluster manager (el proyector) | Standalone, YARN, Kubernetes |
+| worker / compu | worker, executor |
+| tu parte (6 puntos) | partición |
+| pintar tu parte | tarea (task) |
+| resumen | resultado de la tarea |
 | juntar | reduce |
 | vuelta | iteración |
+| se cayó una compu | tolerancia a fallos |
 
 Los tres grupos tienen color **y** forma, siempre en este orden (índices 0, 1, 2):
 
@@ -45,143 +47,141 @@ Los tres grupos tienen color **y** forma, siempre en este orden (índices 0, 1, 
 
 Un punto sin pintar es gris (`--c-none`).
 
-## 4. Las seis fases
+## 4. Los siete pasos
 
-Identificadores de fase, en orden: `lobby`, `paint`, `combine`, `auto`, `fail`, `end`.
+Identificadores de fase, en orden: `lobby`, `solo`, `manager`, `work`, `combine`, `fail`, `end`. Solo se avanza de a un paso; `reset` es la única forma de volver.
 
-Nombres en el recorrido del proyector: **1 Unirse · 2 Pintar · 3 Juntar · 4 Repetir · 5 Se apaga una · 6 Cierre**.
+Recorrido del proyector: **1 Unirse · 2 Driver solo · 3 Cluster manager · 4 Workers · 5 Juntar · 6 Se cae una · 7 Cierre**. Los títulos numeran desde "Paso 1" a partir de Driver solo.
 
 ### 4.1 `lobby` · Unirse
 
-**Proyector**
-- Título: "Sumate con tu celular"
-- Bajada: "Escaneá el QR. Tu celular va a ser una de las computadoras del clúster."
-- QR grande (`/qr.svg`) y la dirección en texto.
-- A la derecha, las compus conectadas (número y nombre) y el contador "Compus conectadas: N".
-- Botón principal: "Empezar: repartir los puntos" (deshabilitado si no hay ningún celular).
+**Proyector:** "Sumate con tu celular", QR grande y la dirección en texto. A la derecha, las compus conectadas. Botón: "Empezar: cada uno es el driver" (necesita un celular).
+
+**Celular:** nombre y "Entrar". Después, "Sos la compu 07" y "Esperá: ya arrancamos."
+
+### 4.2 `solo` · Paso 1 · Sos el driver
+
+Todos los celulares reciben **el mismo trabajo completo**: `6 × celulares` puntos (mínimo 60, máximo 300), con una cuenta regresiva de `SOLO_MS` (20 s).
 
 **Celular**
-- Antes de entrar: título "Sumate al clúster", texto "Tu celular va a ser una computadora del clúster.", campo "Tu nombre", botón "Entrar", nota "Dejá la pantalla prendida y esta pestaña abierta."
-- Después de entrar: "Sos la compu 07" (número grande), el nombre, y "Esperá: ya te llega tu parte de los datos."
+- "Sos el driver", reloj "0:14" (en rojo los últimos 5 s), "Punto 13 de 72" con una barra.
+- Dibujo con todos los puntos chiquitos en gris, los pintados con su color y el actual grande con un anillo que titila.
+- Tres botones (Violeta, Celeste, Rosa). Si acierta, pasa al siguiente; si no, "Casi. Fijate otra vez: hay un centro más cerca." Sin penalidad.
+- Al terminar el tiempo: "¡Tiempo!", "Pintaste 18 de 72 puntos. Te faltaron 54.", "A tu ritmo, para pintar los 72 solo tardarías unos 2 minutos." A quien pintó más: "¡Pintaste más que nadie! Vas a ser el driver del clúster." Al resto: "La que más pintó fue la compu de Ana."
 
-### 4.2 `paint` · Pintar (a mano)
+**Proyector**
+- Cuenta regresiva gigante y "Cada celular tiene 72 puntos para pintar solo."
+- Tarjeta "Los que más pintaron" (top 5 en vivo, con barra contra el total).
+- Al terminar: "Nadie terminó.", "La que más pintó: Ana, 23 de 72.", "A este ritmo, un driver solo tardaría unos 2 minutos." y el cartel "Ana va a ser el driver del clúster."
+- Qué está pasando: "Una sola compu con todos los datos. ¿Llega a terminar?" · "En Spark: el driver es el programa principal. Sin clúster, hace todo en una sola máquina."
+- Botón: "Siguiente: aparece el cluster manager" (se puede tocar antes de que termine el tiempo).
 
-Cada celular recibe **6 puntos**. Hay 3 centros de colores. La persona pinta cada punto del color del centro que le queda más cerca.
+### 4.3 `manager` · Paso 2 · Aparece el cluster manager
+
+Al entrar se elige el driver: quien más pintó en el paso anterior (empate: quien llegó primero). Con un solo celular conectado no hay driver de celular: el proyector hace de driver y ese celular puede ser worker.
+
+**Proyector**
+- Diagrama grande de tres cajas: **Driver** (nombre) → "Pide compus" → **Cluster manager** (el proyector) ← "Se suman" ← **Compus libres** (número grande que salta con cada una y algunos nombres).
+- Abajo: "Cuando Ana pida compus desde su celular, el cluster manager le presta todas estas: van a ser los workers."
+- En el costado aparecen dos tarjetas fijas para el resto de la actividad: Driver y Cluster manager. La grilla pasa a "Compus en el clúster: 10 de 21"; tocar una compu la hace driver (para cambiarlo si hace falta).
+- Botón: "Pedir compus al cluster manager" (necesita al menos un worker). Lo ideal es que lo toque el driver desde su celular.
+
+**Celular (resto)**
+- "Apareció el cluster manager" · "¿Prestás tu compu?" · "Ana es el driver y solo no llega…", un mini diagrama y el botón "Sumar mi compu al clúster".
+- Después: "Tu compu está en el clúster. Ahora sos un worker. Esperá: Ana le va a pedir compus al cluster manager."
+
+**Celular (driver)**
+- "Sos el driver", "Tenés todos los datos y solo no llegás. Pedile compus al cluster manager.", el número de compus que se sumaron y el botón "Pedir compus al cluster manager".
+
+### 4.4 `work` · Paso 3 · Los workers pintan su parte
+
+Cada compu sumada recibe **una parte de 6 puntos** (2 de cada grupo real). El driver no tiene parte: espera resúmenes.
+
+**Celular (worker)**
+- "Sos un worker: pintá tu parte", "Punto 2 de 6", dibujo de sus 6 puntos y los 3 centros, los tres botones.
+- Al pintar los 6: "Pintaste tu parte", la cantidad por color, "Este es tu resumen: cuántos puntos hay de cada color. Es lo único que viaja a Ana, no tus puntos." y el botón "Enviar resumen a Ana".
+- Después: "Resumen enviado. Ana lo junta con los resúmenes de las demás compus. Mirá el proyector."
+- Quien no se sumó ve "Faltás vos" y puede sumarse: recibe su parte en el momento.
+
+**Celular (driver):** "Llegaron 12 de 18 resúmenes", una barra y la lista de resúmenes (nombre y cantidad por color; si alguien hizo la parte de otro, lo dice). Botón "Juntar resúmenes", habilitado cuando llegaron todos.
+
+**Proyector**
+- Dibujo con todos los puntos en gris; cada parte se pinta cuando llega su resumen.
+- "Resúmenes que llegaron al driver: 12 de 18" con barra, y los últimos 5 resúmenes.
+- Grilla: cada worker "pintando" o "envió el resumen"; el driver con su corona.
+- Qué está pasando: "Todas las compus trabajan al mismo tiempo, cada una con su parte." · "En Spark: cada parte es una partición y pintarla es una tarea que corre en un executor."
+- Botón: "Juntar resúmenes" (con un resumen ya se puede; titila cuando llegaron todos). Las partes que falten las termina el driver.
+
+### 4.5 `combine` · Paso 4 · El driver junta los resúmenes
+
+Se hace un paso de K-Means con todos los puntos: los centros se mueven al medio de su grupo.
+
+**Proyector**
+- Los centros se mueven con una línea punteada desde donde estaban.
+- "Por la red viajaron 18 resúmenes, no 108 puntos."
+- Dos barras a la misma escala: "Con el clúster · 9,4 s" (lo que tardó el worker más lento) contra "Un driver solo · unos 2 minutos" (tiempo por punto medido en el paso 1 × todos los puntos). Abajo: "El clúster terminó cuando terminó el último worker: Tomi."
+- Totales por color.
+- Botones "Otra vuelta" y "Repetir solo". Con las vueltas automáticas aparecen "Vuelta 3" y las barras de cuánto se movieron los centros; al converger, el cartel "Listo: los centros ya no se mueven…" y lluvia de formas.
+- Qué está pasando: "Por la red no viajaron los puntos: viajaron resúmenes chiquitos." · "En Spark: juntar en el driver lo que devuelven las tareas es el reduce. Repetir hasta que no cambie es entrenar el modelo."
+- Botón: "Siguiente: se cae una compu".
+
+**Celular (driver):** "Juntaste los resúmenes", totales por color, la comparación de tiempos y el botón "Repetir solo hasta que no cambie" (pasa a "Pausar"). Al converger: "Terminamos. Los centros ya no se mueven: el modelo está entrenado."
+
+**Celular (worker):** "Ana juntó los resúmenes. Movió cada centro al medio de su grupo." y la comparación de tiempos. En las vueltas automáticas: "Vuelta 3 · Calculando… Ahora tu compu pinta sola." y "Vuelta 3 · Resumen enviado".
+
+### 4.6 `fail` · Paso 5 · ¿Y si se cae una compu?
+
+Empieza **otra vuelta a mano**: todas las partes vuelven a estar sin pintar y cada worker repinta la suya con los centros actuales.
+
+**Proyector**
+- Botones: "Girar la ruleta" (tecla K), "Prender todas" y "Juntar resúmenes". Tocar un worker lo hace caer directo.
+- Ruleta: las fichas de los candidatos se iluminan de a una, cada vez más lento, y frena en la víctima. Cartel "Girando la ruleta…".
+- Al caer: "Se cayó la compu de Bruno. El cluster manager le pasó su parte a Beto." Los puntos de esa parte se marcan con un anillo y la ficha del heredero muestra "+6".
+- "Resúmenes que llegaron al driver: 17 de 18 · 18 partes y 17 compus vivas."
+- Al juntar: "Llegaron las 18 partes con 17 compus. No se perdió nada."
+- Qué está pasando: "Si una compu se cae, el cluster manager se da cuenta y otra hace su parte." · "En Spark: el driver vuelve a lanzar la tarea perdida en otro executor. Eso es tolerancia a fallos."
+- Botón: "Cierre".
 
 **Celular**
-- Encabezado: "Punto 2 de 6".
-- Consigna: "¿Qué centro le queda más cerca al punto que titila?"
-- Dibujo: sus 6 puntos y los 3 centros (grandes, con color y forma). El punto actual tiene un anillo que titila. Sin ejes, sin números.
-- Tres botones grandes, uno por centro: forma + nombre ("Violeta", "Celeste", "Rosa").
-- Si acierta: el punto queda pintado y pasa al siguiente.
-- Si se equivoca: el botón tiembla y aparece "Casi. Fijate otra vez: hay un centro más cerca." Puede reintentar las veces que quiera. Nunca se pinta mal un punto.
-- Los puntos se presentan del más fácil al más difícil (ver 6.2).
-- Al pintar los 6: título "Pintaste tus 6 puntos", un resumen visual con la cantidad por color (por ejemplo "Violeta 2 · Celeste 3 · Rosa 1"), el texto "Esto es lo único que le vas a mandar al coordinador: un resumen, no tus puntos." y el botón "Enviar al coordinador".
-- Después de enviar: título "Enviado", texto "Mandaste solo un resumen chiquito. Mirá el proyector."
-- El progreso de pintado se guarda en `sessionStorage` para que no se pierda si se recarga la página.
+- Candidatos, mientras gira: "¿Se cae tu compu?".
+- Víctima: pantalla roja "¡Se cayó tu compu! Es de mentira. Tu parte ahora la hace Beto. Mirá el proyector: no se pierde nada."
+- Heredero: aviso "Te llegó trabajo extra: se cayó la compu de Bruno y su parte ahora la hacés vos." Después de su parte aparece la heredada, con el cartel "Parte de Bruno: se cayó su compu".
+- Resto: "¡Te salvaste! Se cayó la compu de Bruno. Su parte la hace Beto."
+- Driver: el mismo dato en su lista de resúmenes y "Beto · hizo la parte de Bruno" cuando llega.
+- Al juntar: "Llegaron todas las partes. Se cayó la compu de Bruno y no se perdió nada."
 
-**Proyector**
-- Título: "Paso 1 · Pintá tus puntos"
-- Bajada: "Cada celular recibió 6 puntos. Pintá cada uno del color del centro que le queda más cerca."
-- Dibujo grande con **todos** los puntos del aula en gris y los 3 centros. Cuando un celular envía, sus puntos se colorean con una animación corta.
-- Progreso: "Listos: 14 de 22" con barra.
-- Tarjeta "Qué está pasando": "Los datos se repartieron. Cada compu tiene solo su parte y trabaja sin esperar a nadie."
-- Etiqueta técnica: "En un clúster: cada parte es una partición y pintar es la tarea (map)."
-- Botón principal: "Juntar los resultados" (habilitado cuando al menos uno envió; resaltado cuando enviaron todos).
+### 4.7 `end` · Cierre
 
-### 4.3 `combine` · Juntar
-
-El coordinador junta los resúmenes y mueve cada centro al medio de su grupo. Los puntos de quienes no llegaron a enviar los completa el servidor.
-
-**Proyector**
-- Título: "Paso 2 · El coordinador junta todo"
-- Bajada: "Con los resúmenes de todos, mueve cada centro al medio de su grupo."
-- Los centros se mueven con animación (cerca de 1 s) y queda una línea punteada desde donde estaban.
-- Dato destacado: "Por la red viajaron 22 resúmenes, no 132 puntos." (con los números reales).
-- Tarjeta "Qué está pasando": "Cada compu mandó solo cuántos puntos pintó de cada color y dónde están. Con eso alcanza para mover los centros."
-- Etiqueta técnica: "En un clúster: juntar es el reduce. Se mueve el cálculo, no los datos."
-- Botón principal: "Repetir".
-
-**Celular**
-- Título "El coordinador juntó todo", texto "Movió los centros. Mirá el proyector." y su dibujo con los centros en la posición nueva.
-- Si no llegó a enviar: "No llegaste a enviar: tu compu terminó sola tu parte."
-
-### 4.4 `auto` · Repetir
-
-Ahora cada celular pinta solo. Cada vuelta acomoda un poco más los centros, hasta que dejan de moverse.
-
-**Proyector**
-- Título: "Paso 3 · Repetir hasta que no cambie"
-- Bajada: "Ahora cada celular pinta solo. En cada vuelta los centros se acomodan un poco más."
-- Botones: "Otra vuelta" y "Seguir solo" (se convierte en "Pausar" mientras corre).
-- Contador grande "Vuelta 3" y un gráfico de barras chico "Cuánto se movieron los centros", con una barra por vuelta (se achican).
-- Al terminar: cartel "Listo: los centros ya no se mueven. El modelo está entrenado y encontró 3 grupos."
-- Tarjeta "Qué está pasando": "Entrenar un modelo es esto: repetir muchas veces lo mismo sobre los mismos datos."
-- Etiqueta técnica: "En Spark los datos quedan en memoria; por eso cada vuelta es rápida."
-- Botón principal: "Siguiente: apagar una compu".
-
-**Celular**
-- Mientras trabaja: "Vuelta 3 · Pintando…" con una barra corta.
-- Al terminar la vuelta: "Vuelta 3 · Resumen enviado" y su dibujo con los puntos recoloreados.
-- Al converger: título "Terminamos", texto "Los centros ya no se mueven. El modelo está entrenado."
-
-### 4.5 `fail` · Se apaga una compu
-
-**Proyector**
-- Título: "Paso 4 · ¿Y si se apaga una compu?"
-- Bajada: "Tocá una compu para apagarla. Sus puntos pasan a otra y el trabajo sigue."
-- Las compus de la derecha se pueden tocar para apagarlas. Botones: "Apagar una al azar", "Prender todas", "Otra vuelta".
-- Después de apagar: tarjeta "Se apagó la compu de Ana. Sus 6 puntos ahora los pinta Bruno. No se perdió nada." En el dibujo, esos puntos se marcan con un anillo.
-- Etiqueta técnica: "En un clúster real se rompen máquinas todos los días. El coordinador repite ese trabajo en otra: eso es tolerancia a fallos."
-- Botón principal: "Cierre".
-
-**Celular**
-- El apagado: pantalla distinta, título "Tu compu se apagó", texto "Es de mentira. No se perdió nada: tus puntos ahora los pinta otra compu."
-- El heredero: aviso "Heredaste 6 puntos de Ana. Ahora tenés 12." y su dibujo con todos.
-- El resto sigue como en `auto`.
-
-### 4.6 `end` · Cierre
-
-**Proyector**
-- Título: "Lo que hicimos es lo que hace un clúster"
-- Tabla de dos columnas, "En el aula" y "En un clúster de verdad":
+**Proyector:** "Lo que hicimos es lo que hace un clúster" y la tabla:
 
 | En el aula | En un clúster de verdad |
 |---|---|
-| El proyector repartió y juntó | Coordinador (driver) |
-| Sus celulares | Computadoras que trabajan (workers) |
-| Sus 6 puntos | Una parte de los datos (partición) |
-| Pintar los puntos | La tarea de cada compu (map) |
+| Ana, que tenía todo el trabajo | Driver (el programa principal) |
+| El proyector, que juntó las compus | Cluster manager |
+| Sus celulares | Workers (executors) |
+| Sus 6 puntos | Una partición de los datos |
+| Pintar su parte | Una tarea (task) |
 | Mandar el resumen | Lo único que viaja por la red |
-| Juntar los resúmenes | Reduce |
-| Repetir vueltas | Entrenar el modelo (K-Means) |
-| Apagar una compu | Tolerancia a fallos |
+| Juntar los resúmenes | Reduce, en el driver |
+| Se cayó una compu y otra hizo su parte | Tolerancia a fallos |
 
-- Números del aula: "22 compus · 132 puntos · 6 vueltas".
-- Bloque de código: "Con Spark MLlib, todo esto se escribe así:" y `modelo = KMeans(k=3).fit(datos)`.
-- Botón secundario: "Reiniciar actividad" (pide confirmación).
+Debajo: "18 partes · 108 puntos · 4 vueltas · 1 compu caída y ningún dato perdido" y `modelo = KMeans(k=3).fit(datos)`. Botón "Reiniciar actividad" (pide confirmación).
 
-**Celular**
-- Título "Gracias por ser parte del clúster", y "Fuiste la compu 07 · pintaste 6 puntos · hiciste 5 vueltas."
+**Celular:** "Gracias por ser parte del clúster", "Fuiste la compu 07 · solo pintaste 18 puntos · calculaste 3 vueltas." y sus medallas (7.3).
 
-## 5. Archivos y responsables
+## 5. Archivos
 
 | Archivo | Contenido |
 |---|---|
 | `server.js` | HTTP, rutas, sockets y el estado de la actividad |
-| `lib/kmeans.js` | Generación de puntos y cálculo de K-Means |
+| `lib/kmeans.js` | Generación de puntos y K-Means. Lo usan el servidor, los bots, la prueba y los celulares (servido como `/kmeans.js`, define `window.KM`) |
 | `scripts/bots.js` | Celulares falsos para ensayar (`npm run bots -- 25`) |
-| `scripts/smoke.js` | Prueba automática de punta a punta (`npm test`) |
-| `presentacion-web/public/worker.{html,js,css}` | Pantalla del celular (ruta `/`) |
-| `presentacion-web/public/driver.{html,js,css}` | Pantalla del proyector (ruta `/driver`) |
+| `scripts/smoke.js` | Prueba de punta a punta (`npm test`) |
+| `presentacion-web/public/worker.{html,js,css}` | Celular (ruta `/`) |
+| `presentacion-web/public/driver.{html,js,css}` | Proyector (ruta `/driver`) |
 | `presentacion-web/public/styles.css` | Tokens y controles compartidos. **No se modifica** (lo usan otras páginas) |
 
-No se tocan: `presentacion.*`, `teoria.html`, `theory.*`, `fichas.html`, `cards.*`.
-
-Restricciones técnicas:
-- Sin dependencias nuevas. Node ≥ 18, Express, socket.io, JS sin build.
-- Se mantienen las rutas (`/`, `/driver`, `/presentacion`, `/teoria`, `/fichas`, `/qr.svg`, `/icons.svg`, `/fonts/...`) y las variables `PORT`, `DRIVER_KEY`, `PUBLIC_URL`.
-- `/driver` se sigue pudiendo incrustar: `/presentacion` lo carga en un iframe con `?embed=1&key=...`.
+Restricciones: sin dependencias nuevas; Node ≥ 18, Express, socket.io, JS sin build. Se mantienen las rutas y las variables `PORT`, `DRIVER_KEY`, `PUBLIC_URL`. `/driver` se puede incrustar: `/presentacion` lo carga con `?embed=1&key=...`.
 
 ## 6. Reglas del servidor
 
@@ -189,298 +189,147 @@ Restricciones técnicas:
 
 ```
 K = 3
-POINTS_PER_PHONE = 6
 MAX_PHONES = 150
-TASK_TIMEOUT_MS = 2000     // espera máxima por la respuesta de un celular
-ROUND_PAUSE_MS = 700       // pausa entre vueltas en "Seguir solo"
-EMPTY_ROUND_MS = 600       // duración de una vuelta si no hay celulares conectados
-CONVERGED_SHIFT = 0.5      // en un plano de 0 a 100
-MAX_ROUNDS = 15
+SOLO_MS = 20000          // cuenta regresiva del driver solo (variable de entorno SOLO_MS)
+SOLO_MIN_POINTS = 60, SOLO_MAX_POINTS = 300
+DEAD_AFTER_MS = 6000     // un worker desconectado con trabajo pendiente se da por caído (DEAD_AFTER_MS)
+SPIN_MS = 4500           // ruleta (SPIN_MS)
+TASK_TIMEOUT_MS = 2000, ROUND_PAUSE_MS = 700, EMPTY_ROUND_MS = 600
+CONVERGED_SHIFT = 0.5, MAX_ROUNDS = 15
 ```
 
 ### 6.2 Datos
 
-- Plano de 0 a 100 en x e y (y hacia arriba).
-- Tres grupos reales ocultos y tres centros iniciales corridos a propósito, para que los centros tengan que moverse. Se parte de los valores actuales de `lib/kmeans.js` (`TRUE_CENTERS`, `START`) y se ajustan si hace falta para cumplir la prueba de 6.5.
-- Cada celular recibe 6 puntos: **2 de cada grupo real**.
-- **Margen:** al generar un punto se descarta y se vuelve a sortear si, respecto de los centros iniciales, la distancia al segundo centro más cercano menos la distancia al más cercano es menor que 8. Así, a mano, siempre está claro cuál es el centro más cercano.
-- **Separación:** los puntos de un mismo celular quedan a 10 unidades o más entre sí y de los centros iniciales, para que en una pantalla chica no se encimen.
-- Los 6 puntos de un celular se entregan ordenados de mayor a menor margen (el más fácil primero).
-- Cada punto guarda `home` (el celular que lo recibió) y `owner` (quién lo tiene ahora).
+- Plano de 0 a 100 (y hacia arriba), tres grupos reales ocultos (`TRUE_CENTERS`) y tres centros iniciales corridos a propósito (`START`).
+- Una **parte** son 6 puntos de `createPhonePoints`: 2 por grupo real, margen ≥ 8 respecto de `START`, separados entre sí, del más fácil al más difícil.
+- El trabajo del driver solo sale de `soloPoints(seed, total)`: partes de 6 encadenadas con la misma regla. El servidor manda solo la semilla y el total; cada celular genera los mismos puntos.
+- Cada parte guarda `home` (quién la recibió) y `owner` (quién la tiene ahora).
 
-### 6.3 Fases
+### 6.3 Pasos
 
-- `lobby` → `paint`: se crean los datos para los celulares conectados (ordenados por id). Centros = iniciales. `round = 0`. Hace falta al menos un celular.
-- Durante `paint`: `paint:submit` marca al celular como enviado y etiqueta sus puntos con el centro más cercano.
-- `paint` → `combine`: se etiquetan los puntos que falten, se calculan los centros nuevos y `round = 1`.
-- `combine`, `auto`, `fail`, `end` son vistas sobre los mismos datos: se puede ir y volver entre ellas. Si se salta a una de ellas con `round = 0`, primero se hace el `combine`.
-- A `paint` solo se entra desde `lobby`. A `lobby` solo se vuelve con `reset`.
-- Entrar a `end` detiene "Seguir solo".
-- **Quien entra tarde** (fase distinta de `lobby` y de `end`) recibe 6 puntos nuevos en el momento. En `paint` llegan sin pintar; después llegan pintados con el centro más cercano actual.
-- **Quien se desconecta** queda `offline` y nada más: sus puntos no se mueven. En las vueltas automáticas, su parte la calcula el servidor sin esperar.
+- `lobby → solo`: necesita un celular conectado. Arranca la cuenta regresiva.
+- `solo`: `solo:progress { done }` solo sube, nunca pasa el total y se acepta hasta 1,5 s después del final. El ranking ordena por cantidad y desempata por quién llegó antes.
+- `solo → manager`: corta la cuenta si seguía y elige el driver (4.3).
+- `manager`: `register` suma la compu (el driver no puede). El proyector puede cambiar el driver con `driver { id }`; el nuevo driver deja de ser worker.
+- `manager → work`: necesita un worker conectado. Crea una parte por worker (vuelta a mano 1).
+- `work → combine`: necesita al menos un resumen. Termina las partes que falten, hace un paso de K-Means y guarda los datos del join (`join`).
+- `combine`: vueltas automáticas (6.4). Solo el driver o el proyector las arrancan.
+- `combine → fail`: frena las vueltas automáticas y empieza otra vuelta a mano con todas las partes sin pintar.
+- `fail`: `join` cierra la vuelta a mano igual que en `work`, sin cambiar de paso.
+- `fail → end`: si quedó una vuelta a mano abierta, la junta (o la completa si no llegó nada).
+- **Quien se suma tarde** (`work`, `combine` o `fail`) recibe una parte nueva: sin pintar si hay una vuelta a mano, pintada si no.
 
-### 6.4 Vueltas automáticas
+### 6.4 Vueltas automáticas (`combine`)
 
-1. Se manda `task` a cada celular conectado, prendido y con puntos.
-2. La vuelta termina cuando respondieron todos o a los `TASK_TIMEOUT_MS`. Si no había a quién mandarle, termina a los `EMPTY_ROUND_MS`.
-3. **El servidor es la autoridad:** calcula él mismo las etiquetas (centro más cercano con los centros de antes de la vuelta) y los centros nuevos (promedio de cada grupo; un grupo vacío conserva su centro). Las respuestas de los celulares marcan el progreso.
-4. `shift` = la mayor distancia que se movió un centro. Converge si `shift < CONVERGED_SHIFT` o si `round >= MAX_ROUNDS`.
-5. Con "Seguir solo" activo y sin converger, la próxima vuelta arranca a los `ROUND_PAUSE_MS`.
-6. No se puede lanzar una vuelta mientras otra está en curso. En `auto` tampoco después de converger. En `fail` sí se puede: sirve para mostrar que el trabajo sigue sin la compu apagada.
+1. Se manda `task { round, centers }` a cada worker conectado, prendido y con partes.
+2. La vuelta termina cuando respondieron todos o a los `TASK_TIMEOUT_MS`.
+3. **El servidor es la autoridad:** etiqueta y promedia él mismo con los centros de antes de la vuelta. Las respuestas solo marcan el progreso.
+4. Converge si el centro que más se movió se movió menos de `CONVERGED_SHIFT` o si se llegó a `MAX_ROUNDS`.
 
-### 6.5 Prueba de convergencia
+### 6.5 Caídas
 
-`scripts/smoke.js` (se corre con `npm test`) verifica con 200 semillas y con 3, 10 y 30 celulares que K-Means converge en 8 vueltas o menos y que cada centro termina a menos de 8 unidades del promedio de los puntos de su grupo real. En la práctica converge en 2 a 4 vueltas.
+- Una caída mueve **todas** las partes de la víctima a **un** heredero: el worker vivo con menos partes (empate: menor id). El driver nunca se cae ni hereda.
+- Causas: `spin` (ruleta), `kill` (tocar la ficha) y `lost` (se desconectó con trabajo pendiente y no volvió en `DEAD_AFTER_MS`). `spin` y `kill` solo valen en `fail` con una vuelta a mano abierta y sin ruleta girando.
+- La ruleta elige la víctima entre los workers vivos con partes, prefiriendo los que todavía no mandaron. Necesita al menos 2 candidatos. Mientras gira se ignoran `spin` y `kill`.
+- Quien se cayó por `lost` y vuelve queda como worker libre, sin su parte (`me.lostTo` dice quién la hizo).
+- `revive` prende a los que están conectados y devuelve cada parte a su `home` si su dueño original es un worker vivo.
+- `reset` vuelve a `lobby`, borra datos, driver y medallas, y descarta a los desconectados.
 
-### 6.6 Apagar y prender
+### 6.6 Prueba
 
-- `kill` solo vale en la fase `fail`. La víctima tiene que estar prendida y tiene que quedar al menos otro celular prendido y conectado.
-- Todos los puntos que tenía la víctima (propios y heredados) pasan a **un** heredero: el celular prendido y conectado con menos puntos (ante empate, el de menor id).
-- Se guarda `lastFail = { victim, heir, points }` con nombres y cantidad, y se le manda `inherit` al heredero.
-- Si había una vuelta en curso, no se espera la respuesta de la víctima.
-- `revive` devuelve cada punto a su `home`, prende a todos y borra `lastFail`.
-- `reset` vuelve a `lobby`: borra los datos, prende a todos y conserva los celulares conectados. Los que estaban desconectados se descartan; si vuelven, entran como nuevos.
+`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: driver solo, elección y cambio de driver, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset y un ensayo con un solo celular.
 
 ## 7. Contrato de sockets
 
-Conexión con `socket.io`. El rol va en `auth`.
+El rol va en `auth`. Proyector: `{ role: 'projector', key }` (si la clave está mal: `auth:error` y desconexión). Celular: `{ role: 'worker', token, name }` (`token` identifica al celular entre reconexiones; aula llena: `join:error`).
 
-### 7.1 Proyector
-
-`io({ auth: { role: 'driver', key } })`. Si la clave es incorrecta el servidor emite `auth:error` (texto) y desconecta.
-
-**Servidor → proyector: `state`**
-
-```js
-{
-  phase: 'lobby' | 'paint' | 'combine' | 'auto' | 'fail' | 'end',
-  publicUrl: 'http://192.168.0.10:3000',
-  phones: [{
-    id: 7, name: 'Ana',
-    status: 'waiting' | 'painting' | 'sent' | 'idle' | 'working' | 'off' | 'offline',
-    points: 6,        // cuántos puntos tiene ahora
-    inherited: 0,     // cuántos de esos son heredados
-  }],
-  points: [{ x: 31, y: 64, owner: 7, home: 7, label: -1 | 0 | 1 | 2 }],  // -1 = sin pintar
-  centers: [{ x, y }, { x, y }, { x, y }],
-  trail: [[{ x, y }, { x, y }, { x, y }], ...],  // posiciones de los centros; trail[0] = inicio, la última = actual
-  round: 0,           // vueltas completadas
-  shifts: [18.2, 6.1, 1.4],   // cuánto se movieron los centros en cada vuelta
-  progress: { done: 14, total: 22 },  // en paint: enviaron / tienen puntos; en una vuelta: respondieron / se les pidió
-  busy: false,        // hay una vuelta en curso
-  running: false,     // "Seguir solo" activo
-  converged: false,
-  lastFail: null | { victim: 'Ana', heir: 'Bruno', points: 6 },
-  stats: { phones: 22, points: 132, summaries: 22 },  // summaries = resúmenes recibidos en total
-}
-```
-
-Estados de un celular: `off` gana sobre todo; después `offline`; en `lobby` es `waiting`; en `paint` es `painting` o `sent`; en el resto es `working` (tiene una tarea pendiente) o `idle`.
-
-**Proyector → servidor**
-
-| Evento | Datos | Efecto |
-|---|---|---|
-| `phase` | `{ phase }` | Cambia de fase según 6.3 |
-| `round` | — | Una vuelta (fases `auto` y `fail`) |
-| `run` | `{ on: true \| false }` | Activa o pausa "Seguir solo" |
-| `kill` | `{ id }` o `{}` | Apaga ese celular, o uno al azar |
-| `revive` | — | Prende todos |
-| `reset` | — | Vuelve a `lobby` |
-
-### 7.2 Celular
-
-`io({ auth: { role: 'worker', token, name } })`. `token` identifica al celular entre reconexiones (se guarda en `localStorage`). Si el aula está llena el servidor emite `join:error` (texto).
-
-**Servidor → celular: `state`**
+### 7.1 Servidor → proyector: `state`
 
 ```js
 {
   phase,
-  me: {
-    id: 7, name: 'Ana',
-    off: false,
-    sent: false,          // en paint: ya envió
-    working: false,       // tiene una tarea pendiente
-    rounds: 0,            // vueltas automáticas que respondió
-    inheritedFrom: [],    // nombres de quienes heredó puntos
-  },
-  centers: [{ x, y }, { x, y }, { x, y }],
-  points: [{ x, y, label }],   // los que tiene ahora: primero los propios, después los heredados
-  own: 6,                      // cuántos de esos son propios
-  paintKey: '3:7',             // cambia cuando cambian los datos; sirve de clave para sessionStorage
-  round: 0,
-  converged: false,
-  totals: { phones: 22, points: 132 },
+  publicUrl,
+  driver: null | { id, name, connected },
+  phones: [{ id, name, status, registered, parts, inherited, solo }],
+  // status: waiting | painting | done | joined | out | driver | sent | idle | working | off | offline
+  points: [{ x, y, label, moved }],          // label -1 = sin pintar; moved = la tiene otra compu
+  centers, trail, round, shifts,
+  solo: null | { total, remainingMs, durationMs, over, leaders: [{ id, name, done }], painted, players, msPerPoint, estimateMs, top },
+  manual: null | { round, done, total },     // vuelta a mano abierta: resúmenes recibidos / partes
+  inbox: [{ part, from, by, counts: [n0, n1, n2] }],
+  totals: [n0, n1, n2],
+  progress: { done, total }, busy, running, converged,   // vueltas automáticas
+  join: null | { round, parts, filled, workers, rescued, points, parallelMs, slowest, soloMs },
+  lastFail: null | { n, cause, victim, victimId, heir, heirId, parts, pending },
+  spin: null | { n, candidates, victim, ms },
+  stats: { phones, connected, workers, registered, points, parts, summaries, fails },
 }
 ```
 
-**Servidor → celular: otros**
+`join` es el del primer join en `combine` y el último en los demás pasos.
 
-| Evento | Datos | Cuándo |
-|---|---|---|
-| `task` | `{ round, centers }` | Vuelta automática: pintar con esos centros todos los puntos que tiene (propios y heredados) |
-| `inherit` | `{ from: 'Ana', count: 6, total: 12 }` | Heredó puntos |
-| `join:error` | texto | El aula está llena |
+### 7.2 Servidor → celular: `state`
 
-**Celular → servidor**
+```js
+{
+  phase,
+  me: { id, name, role: 'driver' | 'worker' | 'none', registered, off, offCause, lostTo, working, rounds, soloDone, top, medals },
+  solo: null | { seed, total, remainingMs, durationMs, over, msPerPoint, top },   // solo en el paso solo
+  dataKey: '3:2',                // cambia con cada vuelta a mano; clave para sessionStorage
+  centers, round, converged, running, busy,
+  manual: null | { round },
+  parts: [{ id, from: null | 'Bruno', sent, points: [{ x, y, label }] }],   // la propia primero
+  driver: null | { name },
+  workers,
+  join, spin: null | { n, ms }, lastFail: null | { n, cause, victim, heir, parts, me: 'victim' | 'heir' | 'safe' },
+  stats: { workers, points, parts },
+  // solo el driver:
+  inbox, progress: { done, total }, totals,
+}
+```
 
-| Evento | Datos | Cuándo |
-|---|---|---|
-| `paint:submit` | — | Terminó de pintar a mano y tocó "Enviar al coordinador" |
-| `task:result` | `{ round, sums: [{ sx, sy, n } × 3] }` | Terminó una tarea. Espera entre 400 y 900 ms antes de responder, para que se vea el trabajo |
+Además: `task { round, centers }` en las vueltas automáticas.
 
-El celular calcula de verdad: para cada punto busca el centro más cercano y acumula por grupo la suma de x, la suma de y y la cantidad.
+### 7.3 Eventos
 
-Para ensayar, `/?nombre=Ana` entra directo con ese nombre, y cada pestaña abierta así cuenta como una compu distinta.
+| Quién | Evento | Datos | Efecto |
+|---|---|---|---|
+| Proyector | `phase` | `{ phase }` | Avanza un paso (6.3) |
+| Proyector | `driver` | `{ id }` | Cambia el driver (`manager`) |
+| Proyector | `join` | — | Junta (`work`: pasa a `combine`; `fail`: en el lugar) |
+| Proyector | `round` / `run` | — / `{ on }` | Vuelta automática / seguir solo (`combine`) |
+| Proyector | `spin` / `kill` / `revive` | — / `{ id }` / — | Caídas (6.5) |
+| Proyector | `reset` | — | Vuelve a `lobby` |
+| Celular | `solo:progress` | `{ done }` | Cuántos pintó solo |
+| Celular | `register` | — | Suma su compu al clúster |
+| Celular | `part:submit` | `{ part }` | Manda el resumen de esa parte (tiene que ser suya y no enviada) |
+| Celular | `task:result` | `{ round, sums: [{ sx, sy, n } × 3] }` | Responde una vuelta automática |
+| Driver | `driver:ask` | — | Pide compus (`manager → work`) |
+| Driver | `driver:join` | — | Junta resúmenes |
+| Driver | `driver:run` | `{ on }` | Repetir solo / pausar |
+
+Medallas (en este orden; si no tiene ninguna, `cluster`): `driver` (Fuiste el driver), `top` (Pintaste más que nadie solo), `heir` (Hiciste el trabajo de otra compu), `fallen` (Se cayó tu compu y no se perdió nada), `survivor` (Sobreviviste a la ruleta), `worker` (Fuiste un worker del clúster).
+
+Para ensayar, `/?nombre=Ana` entra directo y cada pestaña abierta así es una compu distinta.
 
 ## 8. Diseño visual
 
-- Se usan los tokens de `styles.css` (`--bg`, `--fg`, `--accent`, `--c0`…, `--radius`, `.btn`, `.shape-0`…). No se inventan colores nuevos fuera de esos tokens.
-- Tipografías ya cargadas: Atkinson Hyperlegible Next y Mono.
-- Íconos: `<svg class="icon"><use href="/icons.svg#nombre"/></svg>`. Nombres disponibles: `play`, `pause`, `rotate-ccw`, `contrast`, `qr-code`, `maximize`, `x`, `check`, `skull`, `zap`, `arrow-right`, `arrow-left`, `send`, `circle-alert`, `users`, `power`, `power-off`, `repeat`, `sparkles`, `monitor`, `smartphone`, `wifi-off`, `layers`, `timer`.
-- **Proyector:** se lee desde el fondo del aula. Texto de 20 px como mínimo a 1920×1080, títulos grandes, una idea por pantalla. Tiene que funcionar desde 1100×600 (incrustado) hasta 1920×1080. Tema oscuro por defecto y alto contraste con la tecla T.
-- **Celular:** pantalla angosta (360 px), botones de 56 px de alto como mínimo, la acción principal siempre visible sin hacer scroll. Sigue el tema del sistema.
+- Tokens de `styles.css` (`--bg`, `--fg`, `--accent`, `--warn`, `--c0`…). El driver se marca con `--warn` y el ícono `crown`; el cluster manager con `--accent` y `server`.
+- Tipografías: Atkinson Hyperlegible Next y Mono.
+- **Proyector:** se lee desde el fondo. Texto de 20 px como mínimo a 1920×1080, una idea por pantalla, funciona desde 1100×600 (incrustado). Tema oscuro y alto contraste con T.
+- **Celular:** 360 px de ancho, botones de 56 px de alto como mínimo, la acción principal fija abajo. Sigue el tema del sistema.
 - Las animaciones respetan `prefers-reduced-motion`.
 
 ### Teclas del proyector
 
 | Tecla | Acción |
 |---|---|
-| → / ← | Fase siguiente / anterior (cuando se puede) |
-| Espacio o R | Otra vuelta (fases `auto` y `fail`) |
-| S | Seguir solo / pausar |
-| K | Apagar una al azar (fase `fail`) |
+| → | Paso siguiente (cuando se puede) |
+| J | Juntar resúmenes (Workers y Se cae una) |
+| Espacio o R | Otra vuelta (Juntar) |
+| S | Repetir solo / pausar (Juntar) |
+| K | Girar la ruleta (Se cae una) |
 | Q | Mostrar u ocultar el QR grande |
 | T | Alto contraste |
-| F | Pantalla completa. Incrustado, avisa a la página contenedora con `parent.postMessage({ type: 'deck-fullscreen' }, location.origin)` |
-| Esc | Cierra el QR |
-
-## 9. Capa de juego
-
-Tres agregados para que la actividad sea más divertida sin sumar decisiones en el celular: una **carrera al pintar**, una **ruleta** para apagar una compu y un **festejo** con medallas. Esta sección manda sobre las anteriores donde se contradigan.
-
-### 9.1 Carrera al pintar (fase `paint`)
-
-**Reglas**
-- Cada celular tiene un tiempo de pintado: desde que recibe sus puntos (al empezar `paint`, o al entrar tarde durante `paint`) hasta que toca "Enviar al coordinador". Lo mide el servidor.
-- Cada error suma una penalidad de 3 s (`PENALTY_MS = 3000`). El puntaje es `ms + PENALTY_MS × errores`; gana el menor. Desempate: menor `ms`, después menor `id`.
-- El podio son los 3 mejores puntajes entre los que ya enviaron. Se actualiza en vivo.
-- **Entre todos contra uno solo:**
-  - `parallelMs` = el `ms` del que más tardó entre los que enviaron. El grupo termina cuando termina el último.
-  - `soloMs` = (suma de los `ms` de los que enviaron ÷ suma de los puntos que pintaron) × cantidad total de puntos. Es lo que tardaría una sola persona pintando todo.
-  - Si nadie envió, los dos son `null`.
-
-**Celular**
-- Mientras pinta: arriba a la derecha, un cronómetro chico que corre ("12 s").
-- Al errar: "Casi. Fijate otra vez: hay un centro más cerca. +3 s".
-- Al enviar: título "Enviado", después "Tardaste 14,2 s" (y si hubo errores: " · 1 error, +3 s"), y "Puesto 5 de los 14 que terminaron". Si está entre los 3 primeros: "¡Estás en el podio!" destacado. Se actualiza en vivo a medida que terminan otros.
-- En `combine`: además del texto de 4.3, "Entre todos tardaron 25 s. Una sola persona habría tardado unos 6 minutos."
-
-**Proyector**
-- En `paint`, al lado del dibujo (debajo de la leyenda): tarjeta "Los más rápidos" con el podio (puesto, nombre, tiempo con un decimal y, si tuvo errores, "+3 s" por error). Mientras nadie terminó: "Todavía nadie terminó." Abajo, en chico: "Cada error suma 3 s."
-- En `combine`, la comparación es el momento fuerte de la pantalla: dos barras horizontales a la misma escala.
-  - "Entre todos · 25 s" (barra corta, color de acento).
-  - "Una sola persona · unos 6 minutos" (barra larga, gris).
-  - Debajo, en chico: "El grupo terminó cuando terminó el último: Tomi." (`slowest.name`).
-  - Va junto al dato "Por la red viajaron N resúmenes, no M puntos."
-
-**Formato de tiempos** (es-AR): menos de 60 s, con un decimal ("14,2 s"). Para `soloMs`: menos de 90 s, "unos 50 segundos"; si no, "unos N minutos" con N redondeado (mínimo 2).
-
-### 9.2 Ruleta (fase `fail`)
-
-**Reglas**
-- El proyector emite `spin`. Vale en `fail`, sin otra ruleta en curso, sin vuelta en curso y con al menos 2 compus prendidas y conectadas.
-- El servidor elige la víctima al azar entre las prendidas y conectadas que tienen puntos. Los **candidatos** son todas las prendidas y conectadas.
-- La ruleta dura `SPIN_MS` (4500 por defecto; se puede cambiar con la variable de entorno `SPIN_MS` para las pruebas). Al terminar, el servidor apaga a la víctima con las mismas reglas que `kill` (6.6). Si la víctima se desconectó mientras giraba, elige otra válida; si no queda ninguna, cancela.
-- Mientras gira, se ignoran `spin`, `kill`, `revive`, `round` y `run { on: true }`. Cambiar de fase o `reset` la cancelan.
-- `lastFail` ahora incluye `n` (contador que sube con cada apagado), `victimId` y `heirId`, además de `victim`, `heir` y `points`.
-- Tocar una ficha en el proyector sigue apagando esa compu directo, sin ruleta.
-
-**Proyector**
-- El botón "Apagar una al azar" pasa a ser "Girar la ruleta" (ícono `dices`; tecla K).
-- Mientras gira: las fichas de los candidatos se iluminan de a una, saltando rápido al principio y cada vez más lento, y la última iluminada es la víctima justo al terminar los `ms`. En el escenario, sobre el dibujo, un cartel grande: "Girando la ruleta…".
-- Al frenar: la ficha de la víctima titila en rojo y aparece la tarjeta del apagado de 4.5.
-- La animación es del proyector: arranca cuando llega un `spin` con un `n` nuevo y dura `spin.ms`.
-
-**Celular**
-- Si es candidato mientras gira: pantalla `spin`, con el título "¿Se apaga tu compu?", el texto "La ruleta está girando…" y una animación de las tres formas girando.
-- Cuando cambia `lastFail.n`:
-  - La víctima ve la pantalla de apagado, ahora con el título "¡Te tocó!" y el texto "Tu compu se apagó. Es de mentira: tus puntos ahora los pinta Bruno. No se perdió nada."
-  - El heredero ve el aviso "Te tocó trabajar: heredaste 6 puntos de Ana. Ahora tenés 12."
-  - El resto ve el aviso "¡Te salvaste! Se apagó la compu de Ana."
-
-### 9.3 Festejo y medallas
-
-**Festejo:** cuando `converged` pasa de `false` a `true`:
-- En el proyector, una lluvia de formas (círculos, cuadrados y triángulos con los colores de los grupos) que cae durante unos 2,5 s sobre el escenario. Se hace con CSS o canvas propio, sin librerías.
-- Los celulares vibran con `[80, 60, 80, 60, 200]` y la pantalla "Terminamos" entra con una animación corta.
-- Con `prefers-reduced-motion` no hay lluvia ni animación (la vibración queda).
-
-**Medallas:** el servidor las calcula para cada celular. Claves, en este orden:
-
-| Clave | Cuándo | Texto en el celular | Ícono |
-|---|---|---|---|
-| `fastest` | Puesto 1 de la carrera | La compu más rápida | `trophy` |
-| `podium` | Puesto 2 o 3 | En el podio | `medal` |
-| `perfect` | Envió sin errores | Cero errores | `target` |
-| `heir` | Alguna vez heredó puntos | Hiciste trabajo de otra compu | `heart-handshake` |
-| `survivor` | Fue candidata en una ruleta que terminó y no fue la víctima | Sobreviviste a la ruleta | `shield-check` |
-| `fallen` | Fue víctima de la ruleta o la apagaron tocando su ficha | Te apagaron y no se perdió nada | `power-off` |
-| `cluster` | Solo si no tiene ninguna otra | Parte del clúster | `users` |
-
-**Celular, en `end`:** debajo de "Gracias por ser parte del clúster" y de su línea de números, sus medallas como tarjetas grandes con ícono y texto. Si tiene `fastest` o `podium`, también "Puesto N en la carrera".
-
-**Proyector, en `end`:** debajo de los números del aula, la línea "Podio de pintura: 1. Ana 9,8 s · 2. Bruno 10,4 s · 3. Caro 11,0 s".
-
-### 9.4 Cambios al contrato de sockets
-
-**Celular → servidor**
-
-| Evento | Datos |
-|---|---|
-| `paint:submit` | `{ mistakes }`: entero de 0 a 500. Si falta o no es válido, cuenta 0 |
-
-**Proyector → servidor**
-
-| Evento | Datos | Efecto |
-|---|---|---|
-| `spin` | — | Gira la ruleta (9.2) |
-
-**Servidor → proyector, campos nuevos de `state`**
-
-```js
-{
-  race: {
-    podium: [{ id: 3, name: 'Caro', ms: 9800, mistakes: 0, score: 9800 }],  // hasta 3
-    finished: 14,          // celulares que enviaron
-    parallelMs: 25300,     // o null
-    soloMs: 336000,        // o null
-    slowest: { name: 'Tomi', ms: 25300 },  // o null
-    penaltyMs: 3000,
-  },
-  spin: null | { n: 1, candidates: [1, 2, 4, 7], victim: 7, ms: 4500 },
-  lastFail: null | { n: 1, victim: 'Ana', victimId: 7, heir: 'Bruno', heirId: 2, points: 6 },
-}
-```
-
-**Servidor → celular, campos nuevos de `state`**
-
-```js
-{
-  me: {
-    // ...lo de 7.2, más:
-    paint: null | { ms: 14200, mistakes: 1, score: 17200, rank: 5, of: 14 },
-    medals: ['podium', 'perfect'],
-  },
-  race: { parallelMs: 25300, soloMs: 336000 },   // cada uno puede ser null
-  spin: null | { n: 1, ms: 4500 },   // solo si hay una ruleta girando y este celular es candidato
-  lastFail: null | { n: 1, victim: 'Ana', heir: 'Bruno', points: 6, me: 'victim' | 'heir' | 'safe' },
-}
-```
-
-`lastFail.me` vale `'safe'` para todos los que no son víctima ni heredero, incluidos los que no fueron candidatos.
-
-**Íconos nuevos** para `/icons.svg`: `trophy`, `medal`, `award`, `target`, `heart-handshake`, `shield-check`, `dices`, `party-popper`.
-
-**Teclas:** K ahora gira la ruleta (en `fail`).
+| F | Pantalla completa |
+| Esc | Cierra el QR o el diálogo |

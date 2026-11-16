@@ -8,7 +8,7 @@ La exposición dura 20 minutos:
 | 5–6 | Carga y presentación de resultados |
 | 6–7 | Explicación de la práctica |
 | 7–10 | Cuatro diapositivas teóricas ([guion 2](guiones/02-exposicion-teorica.md)) |
-| 10–17 | Actividad web de K-Means ([guion 3](guiones/03-actividad-web.md)) |
+| 10–17 | Actividad web: el aula es un clúster ([guion 3](guiones/03-actividad-web.md)) |
 | 17–20 | Interpretación final y cierre |
 
 ## Ejecutar la presentación unificada
@@ -28,7 +28,7 @@ La terminal imprime tres direcciones. Abran **Presentación** en la computadora 
 2. **5–6 · Resultados:** pulsen **Cargar resultados** en la presentación. En la pestaña aparte, ingresen solo segundos y fichas mal clasificadas: una ronda tradicional y cada una de las cuatro mesas. La presentación calcula el tiempo de la última mesa y suma sus errores.
 3. **6–7 · Interpretación:** expliquen el montón compartido y las esperas del método tradicional frente a las cuatro particiones procesadas en paralelo. Aclaren que es una analogía de aula, no una medición de Spark.
 4. **7–10 · Teoría:** avancen por las cuatro láminas integradas: arquitectura; particiones, DAG y evaluación perezosa; MLlib/K-Means; usos y comparación con una base relacional.
-5. **10–17 · Actividad web:** en la última diapositiva, la pantalla del proyector es el coordinador. La audiencia escanea el QR, escribe su nombre y pinta sus 6 puntos del centro que le queda más cerca. Sigan los pasos del proyector: Unirse, Pintar, Juntar, Repetir, Se apaga una compu y Cierre. Guion completo en [guiones/03-actividad-web.md](guiones/03-actividad-web.md).
+5. **10–17 · Actividad web:** en la última diapositiva, la pantalla del proyector es el cluster manager. La audiencia escanea el QR y escribe su nombre. Primero cada uno es el driver y pinta solo todos los puntos durante 20 segundos; quien pinta más queda como driver del clúster. Después el resto suma su celular como worker, pinta su parte de 6 puntos y le manda un resumen al driver, que los junta desde su celular. Al final se cae una compu y otra hace su parte sin perder nada. Sigan los pasos del proyector: Unirse, Driver solo, Cluster manager, Workers, Juntar, Se cae una y Cierre. Guion completo en [guiones/03-actividad-web.md](guiones/03-actividad-web.md).
 6. **17–20 · Cierre:** expliquen qué se observó en K-Means, dónde conviene Spark y cómo se complementa con una base relacional.
 
 Avancen con **← / →**, **espacio** o los botones inferiores. Usen **F** o el botón de pantalla completa para proyectar. La carga de datos queda en otra pestaña y no forma parte de lo que se proyecta.
@@ -43,4 +43,4 @@ Los celulares y la computadora deben poder comunicarse por la red del aula. Ens�
 
 El PDF incluido está actualizado con los datos del grupo y se generó desde [informe/informe.tex](informe/informe.tex). Si modifican la fuente antes de entregar, vuelvan a compilar el PDF desde la carpeta `informe` con LaTeX (dos pasadas de `pdflatex`) o con Tectonic.
 
-La primera ronda usa siete personas con las 200 fichas en un montón compartido; la segunda usa cuatro mesas de cinco personas con las mismas fichas, 50 por mesa. La pantalla compara tiempos y fichas mal clasificadas, pero advierte que no es un benchmark controlado ni una medición de Apache Spark. La actividad web es otra experiencia breve: una simulación didáctica de K-Means. Cada celular pinta sus puntos y manda un resumen al coordinador; los teléfonos no ejecutan Spark real.
+La primera ronda usa siete personas con las 200 fichas en un montón compartido; la segunda usa cuatro mesas de cinco personas con las mismas fichas, 50 por mesa. La pantalla compara tiempos y fichas mal clasificadas, pero advierte que no es un benchmark controlado ni una medición de Apache Spark. La actividad web es otra experiencia breve: una simulación didáctica de la arquitectura de Spark (driver, cluster manager y workers) entrenando K-Means. Cada celular pinta su parte y manda un resumen al driver; los teléfonos no ejecutan Spark real.

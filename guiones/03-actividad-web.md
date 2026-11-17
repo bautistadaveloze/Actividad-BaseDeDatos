@@ -3,7 +3,7 @@
 **Duración:** 7 minutos (minutos 10–17 de la exposición)  
 **Necesitan:** computadora conectada al proyector, red local y celulares de la clase.
 
-La actividad es una simulación didáctica: los celulares no ejecutan Spark real. La idea es que la clase viva, en orden, lo mismo que pasa en Spark: primero cada uno es **el driver** solo con todo el trabajo, después aparece **el cluster manager**, después los celulares se suman como **workers**, mandan **resúmenes**, y al final se cae una compu y **no se pierde nada**.
+La actividad es una simulación didáctica: los celulares no ejecutan Spark real. La idea es que la clase viva, en orden, lo mismo que pasa en Spark: después de practicar cómo se juega, primero cada uno es **el driver** solo con todo el trabajo, después aparece **el cluster manager**, después los celulares se suman como **workers**, mandan **resúmenes**, y al final se cae una compu y **no se pierde nada**.
 
 ## Preparación previa
 
@@ -16,17 +16,29 @@ La actividad es una simulación didáctica: los celulares no ejecutan Spark real
 
 ## Qué ve y hace la clase
 
-### 10:00–10:45 · Unirse
+### 10:00–10:30 · Unirse
 
 **Proyector:** "Sumate con tu celular", el QR grande y la dirección en texto. A la derecha, las compus conectadas.
 
 **Clase:** escanea el QR, escribe su nombre y toca **Entrar**. Tiene que dejar la pantalla prendida.
 
-**Vos:** cuando haya gente conectada, tocá **Empezar: cada uno es el driver**.
+**Vos:** cuando haya gente conectada, tocá **Siguiente: cómo se juega**.
 
-> "Ahora cada uno de ustedes es el driver: la compu que tiene el trabajo. Tienen 20 segundos."
+### 10:30–11:00 · Cómo se juega
 
-### 10:45–11:30 · Paso 1 · Sos el driver
+**Proyector:** un ejemplo que se repite solo: el punto titila, salen líneas a los tres centros, gana el más cercano y el punto se pinta de ese color. Al lado, los tres pasos (mirá el punto, ¿qué centro le queda más cerca?, tocá ese color), que se iluminan junto con el ejemplo.
+
+**Clase:** en el celular practica con 3 puntos que **no cuentan**. Al terminar ve "¡Ya sabés jugar!" y espera.
+
+**Vos:** explicá señalando el ejemplo. Cuando la mayoría haya terminado la práctica, tocá **Arrancar: cada uno es el driver**. El reloj no arranca hasta que lo tocás.
+
+> "Cada punto pertenece al centro que le queda más cerca. Miren el punto que titila, busquen la figura grande más cercana y toquen ese color. Si le erran, prueban otra vez. Practiquen con estos tres: no cuentan."
+
+Al tocar **Arrancar**:
+
+> "Ahora sí: cada uno de ustedes es el driver, la compu que tiene el trabajo. Tienen 20 segundos."
+
+### 11:00–11:45 · Paso 1 · Sos el driver
 
 **Celular:** "Sos el driver", un reloj que baja de 20 a 0 y **todos** los puntos del trabajo (unos 6 por persona del aula: con 22 personas, 132). Hay que tocar el centro más cercano al punto que titila, uno por uno.
 
@@ -38,7 +50,7 @@ La actividad es una simulación didáctica: los celulares no ejecutan Spark real
 
 > "Una sola compu con todos los datos no llega. Y esto eran 132 puntos: imagínense millones. Ana, que pintó más que nadie, va a ser nuestro driver. Pero ahora va a tener ayuda."
 
-### 11:30–12:30 · Paso 2 · Aparece el cluster manager
+### 11:45–12:40 · Paso 2 · Aparece el cluster manager
 
 **Proyector:** un diagrama de tres cajas: **Driver (Ana)** → **Cluster manager (el proyector)** → **Compus libres**. El cluster manager anota solo a todas las compus conectadas.
 
@@ -48,7 +60,7 @@ La actividad es una simulación didáctica: los celulares no ejecutan Spark real
 
 > "El cluster manager no hace el trabajo: sabe qué compus están libres y se las presta al driver. En Spark puede ser YARN, Kubernetes o el modo Standalone."
 
-### 12:30–13:45 · Paso 3 · Los workers pintan su parte
+### 12:40–13:50 · Paso 3 · Los workers pintan su parte
 
 **Celular (workers):** "Sos un worker: pintá tu parte". Ahora cada uno tiene **solo 6 puntos**. Al terminar ve su **resumen** (cuántos de cada color) y toca **Enviar resumen a Ana**.
 
@@ -60,7 +72,7 @@ La actividad es una simulación didáctica: los celulares no ejecutan Spark real
 
 > "Fíjense: antes cada uno tenía 132 puntos; ahora tiene 6, y todos trabajan al mismo tiempo. Y a Ana no le mandan los puntos: le mandan un resumen."
 
-### 13:45–14:45 · Paso 4 · El driver junta los resúmenes
+### 13:50–14:50 · Paso 4 · El driver junta los resúmenes
 
 **Proyector:** los centros se mueven con una línea punteada. Dos barras comparan "Con el clúster · 9 s" contra "Un driver solo · unos 3 minutos" (medido con lo que pintaron en el paso 1). Dato destacado: "Por la red viajaron 21 resúmenes, no 126 puntos."
 
@@ -70,7 +82,7 @@ La actividad es una simulación didáctica: los celulares no ejecutan Spark real
 
 > "Entre todos tardamos segundos; solo, minutos. Y el clúster termina cuando termina el último. Repetir esto hasta que no cambie es entrenar un modelo: K-Means."
 
-### 14:45–16:15 · Paso 5 · ¿Y si se cae una compu?
+### 14:50–16:15 · Paso 5 · ¿Y si se cae una compu?
 
 **Celular:** empieza otra vuelta a mano: cada worker vuelve a pintar su parte.
 

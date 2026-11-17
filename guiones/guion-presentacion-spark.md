@@ -605,19 +605,20 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 
 **Pasaje:** "Y ahora, en vez de escucharlo, lo van a vivir".
 
-### 42 · Siete pasos, unos siete minutos
+### 42 · Los pasos, unos siete minutos
 
 **Idea:** anticipar qué va a pasar en la actividad para que nadie se pierda.
 
 **Cómo explicarlo:**
 - Contá los pasos rápido, sin detalle (si la diapositiva todavía dice "Seis pasos", usá esta lista):
   1. Se unen con el celular.
-  2. Cada uno es **el driver**, solo con todos los puntos y 20 segundos. Quien pinta más queda como driver.
-  3. Aparece **el cluster manager** (el proyector) y le dice a cada celular libre que va a ser un worker.
-  4. Los celulares son **workers**: cada uno pinta su parte de 6 puntos y le manda un resumen al driver.
-  5. El driver junta los resúmenes, mueve los centros y repite hasta que no cambian.
-  6. Se cae una compu y otra hace su parte: no se pierde nada.
-  7. Cierre: qué fue cada cosa.
+  2. Cómo se juega: el proyector muestra un ejemplo y cada uno practica con 3 puntos que no cuentan. El reloj arranca cuando vos lo decidís.
+  3. Cada uno es **el driver**, solo con todos los puntos y 20 segundos. Quien pinta más queda como driver.
+  4. Aparece **el cluster manager** (el proyector) y le dice a cada celular libre que va a ser un worker.
+  5. Los celulares son **workers**: cada uno pinta su parte de 6 puntos y le manda un resumen al driver.
+  6. El driver junta los resúmenes, mueve los centros y repite hasta que no cambian.
+  7. Se cae una compu y otra hace su parte: no se pierde nada.
+  8. Cierre: qué fue cada cosa.
 - Es el mismo orden de las diapositivas 26 a 32: el driver, el driver pide recursos, los workers, las particiones, las tareas y los resultados que vuelven.
 
 ### 43 · El clúster son ustedes
@@ -649,6 +650,7 @@ En cada paso conectá lo que pasa en los celulares con una diapositiva:
 | Paso | Qué está pasando | Qué decir | Diapositiva |
 |---|---|---|---|
 | Unirse | Cada celular entra y recibe un número | "Cada celular es una compu" | 6 |
+| Cómo se juega | Ejemplo en el proyector y 3 puntos de práctica en el celular | "Cada punto va con el centro más cercano: eso es asignar en K-Means" | 18–19 |
 | Driver solo | Cada uno pinta solo todos los puntos durante 20 segundos y nadie termina | "El driver es el programa que tiene el trabajo. Solo, con todos los datos, no llega" | 5, 26 |
 | Cluster manager | Aparece el proyector como cluster manager y anota a cada celular libre como worker | "El cluster manager no trabaja: sabe qué compus están libres y se las presta al driver" | 7, 27 |
 | Workers | Cada uno pinta su parte de 6 puntos y le manda un resumen al driver | "Cada parte es una partición; pintarla es una tarea. Viajan resúmenes, no puntos" | 28–32 |

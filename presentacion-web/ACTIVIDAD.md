@@ -47,19 +47,36 @@ Los tres grupos tienen color **y** forma, siempre en este orden (índices 0, 1, 
 
 Un punto sin pintar es gris (`--c-none`).
 
-## 4. Los siete pasos
+## 4. Los pasos
 
-Identificadores de fase, en orden: `lobby`, `solo`, `manager`, `work`, `combine`, `fail`, `end`. Solo se avanza de a un paso; `reset` es la única forma de volver.
+Identificadores de fase, en orden: `lobby`, `howto`, `solo`, `manager`, `work`, `combine`, `fail`, `end`. Solo se avanza de a un paso; `reset` es la única forma de volver.
 
-Recorrido del proyector: **1 Unirse · 2 Driver solo · 3 Cluster manager · 4 Workers · 5 Juntar · 6 Se cae una · 7 Cierre**. Los títulos numeran desde "Paso 1" a partir de Driver solo.
+Recorrido del proyector: **1 Unirse · 2 Cómo jugar · 3 Driver solo · 4 Cluster manager · 5 Workers · 6 Juntar · 7 Se cae una · 8 Cierre**. Los títulos numeran desde "Paso 1" a partir de Driver solo.
 
 ### 4.1 `lobby` · Unirse
 
-**Proyector:** "Sumate con tu celular", QR grande y la dirección en texto. A la derecha, las compus conectadas. Botón: "Empezar: cada uno es el driver" (necesita un celular).
+**Proyector:** "Sumate con tu celular", QR grande y la dirección en texto. A la derecha, las compus conectadas. Botón: "Siguiente: cómo se juega" (necesita un celular).
 
 **Celular:** nombre y "Entrar". Después, "Sos la compu 07" y "Esperá: ya arrancamos."
 
-### 4.2 `solo` · Paso 1 · Sos el driver
+### 4.2 `howto` · Cómo se juega
+
+Antes del reloj, todos aprenden la única acción del juego: pintar un punto del color del centro que le queda más cerca. El reloj no arranca hasta que quien presenta toca el botón del proyector.
+
+**Proyector**
+- "Cómo se juega" y "Cada punto se pinta del color del centro que le queda más cerca."
+- Un ejemplo que se repite solo: el punto titila, salen líneas punteadas a los tres centros, la del más cercano queda firme con su color y el punto se pinta. Pasa por un punto de cada grupo y vuelve a empezar. Con movimiento reducido queda quieto en el ejemplo resuelto.
+- Al lado, tres pasos que se iluminan junto con el ejemplo: "Mirá el punto que titila" · "¿Qué centro le queda más cerca?" · "Tocá ese color", con los tres botones del celular y el correcto marcado.
+- "Si le errás, probá otra vez: no resta. Cuando arranque, vas a tener 20 segundos para pintar todos los puntos que puedas." (los segundos salen de `SOLO_MS`).
+- Qué está pasando: "Pintar un punto es decidir a qué grupo pertenece: al del centro más cercano." · "En K-Means: asignar cada punto a su centro más cercano. Es el cálculo que se repite en cada vuelta."
+- Botón: "Arrancar: cada uno es el driver" (titila: es lo próximo que hay que tocar).
+
+**Celular**
+- "Práctica: no cuenta", "Cómo se juega", "Tocá el color del centro que le queda más cerca al punto que titila." y tres puntos de práctica fijos (uno por centro) con los mismos botones del juego. Si acierta: "¡Bien! Ese es el centro más cerca."; si no, el mismo aviso que en el juego. La práctica no se manda al servidor.
+- Al terminar: "¡Ya sabés jugar!", "Cuando arranque vas a ser el driver: vas a tener todos los puntos y 20 segundos. Pintá todos los que puedas." y "Esperá: el reloj arranca desde el proyector."
+- Quien entra en este paso también practica.
+
+### 4.3 `solo` · Paso 1 · Sos el driver
 
 Todos los celulares reciben **el mismo trabajo completo**: `6 × celulares` puntos (mínimo 60, máximo 300), con una cuenta regresiva de `SOLO_MS` (20 s).
 
@@ -76,7 +93,7 @@ Todos los celulares reciben **el mismo trabajo completo**: `6 × celulares` punt
 - Qué está pasando: "Una sola compu con todos los datos. ¿Llega a terminar?" · "En Spark: el driver es el programa principal. Sin clúster, hace todo en una sola máquina."
 - Botón: "Siguiente: aparece el cluster manager" (se puede tocar antes de que termine el tiempo).
 
-### 4.3 `manager` · Paso 2 · Aparece el cluster manager
+### 4.4 `manager` · Paso 2 · Aparece el cluster manager
 
 Al entrar se elige el driver: quien más pintó en el paso anterior (empate: quien llegó primero). Con un solo celular conectado no hay driver de celular: el proyector hace de driver y ese celular puede ser worker.
 
@@ -92,7 +109,7 @@ Al entrar se elige el driver: quien más pintó en el paso anterior (empate: qui
 **Celular (driver)**
 - "Sos el driver", "Tenés todos los datos y solo no llegás. Pedile compus al cluster manager.", el número de compus libres anotadas como workers y el botón "Pedir compus al cluster manager".
 
-### 4.4 `work` · Paso 3 · Los workers pintan su parte
+### 4.5 `work` · Paso 3 · Los workers pintan su parte
 
 Cada worker recibe **una parte de 6 puntos** (2 de cada grupo real). El driver no tiene parte: espera resúmenes.
 
@@ -111,7 +128,7 @@ Cada worker recibe **una parte de 6 puntos** (2 de cada grupo real). El driver n
 - Qué está pasando: "Todas las compus trabajan al mismo tiempo, cada una con su parte." · "En Spark: cada parte es una partición y pintarla es una tarea que corre en un executor."
 - Botón: "Juntar resúmenes" (con un resumen ya se puede; titila cuando llegaron todos). Las partes que falten las termina el driver.
 
-### 4.5 `combine` · Paso 4 · El driver junta los resúmenes
+### 4.6 `combine` · Paso 4 · El driver junta los resúmenes
 
 Se hace un paso de K-Means con todos los puntos: los centros se mueven al medio de su grupo.
 
@@ -128,7 +145,7 @@ Se hace un paso de K-Means con todos los puntos: los centros se mueven al medio 
 
 **Celular (worker):** "Ana juntó los resúmenes. Movió cada centro al medio de su grupo." y la comparación de tiempos. En las vueltas automáticas: "Vuelta 3 · Calculando… Ahora tu compu pinta sola." y "Vuelta 3 · Resumen enviado".
 
-### 4.6 `fail` · Paso 5 · ¿Y si se cae una compu?
+### 4.7 `fail` · Paso 5 · ¿Y si se cae una compu?
 
 Empieza **otra vuelta a mano**: todas las partes vuelven a estar sin pintar y cada worker repinta la suya con los centros actuales.
 
@@ -149,7 +166,7 @@ Empieza **otra vuelta a mano**: todas las partes vuelven a estar sin pintar y ca
 - Driver: el mismo dato en su lista de resúmenes y "Beto · hizo la parte de Bruno" cuando llega.
 - Al juntar: "Llegaron todas las partes. Se cayó la compu de Bruno y no se perdió nada."
 
-### 4.7 `end` · Cierre
+### 4.8 `end` · Cierre
 
 **Proyector:** "Lo que hicimos es lo que hace un clúster" y la tabla:
 
@@ -206,9 +223,10 @@ CONVERGED_SHIFT = 0.5, MAX_ROUNDS = 15
 
 ### 6.3 Pasos
 
-- `lobby → solo`: necesita un celular conectado. Arranca la cuenta regresiva.
+- `lobby → howto`: necesita un celular conectado. No crea datos ni arranca el reloj.
+- `howto → solo`: necesita un celular conectado. Arranca la cuenta regresiva.
 - `solo`: `solo:progress { done }` solo sube, nunca pasa el total y se acepta hasta 1,5 s después del final. El ranking ordena por cantidad y desempata por quién llegó antes.
-- `solo → manager`: corta la cuenta si seguía y elige el driver (4.3).
+- `solo → manager`: corta la cuenta si seguía y elige el driver (4.4).
 - `manager`: al entrar, el servidor anota como worker a cada celular conectado que no es el driver (no hay evento para sumarse). Quien se conecta después, en `manager`, `work`, `combine` o `fail`, queda anotado al conectarse y, si ya hay datos, recibe su parte. El proyector puede cambiar el driver con `driver { id }`; el nuevo driver deja de ser worker y el anterior pasa a serlo.
 - `manager → work`: necesita un worker conectado. Crea una parte por worker (vuelta a mano 1).
 - `work → combine`: necesita al menos un resumen. Termina las partes que falten, hace un paso de K-Means y guarda los datos del join (`join`).
@@ -236,7 +254,7 @@ CONVERGED_SHIFT = 0.5, MAX_ROUNDS = 15
 
 ### 6.6 Prueba
 
-`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: driver solo, elección y cambio de driver, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset y un ensayo con un solo celular.
+`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: que no se salte el paso de cómo se juega, driver solo, elección y cambio de driver, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset y un ensayo con un solo celular.
 
 ## 7. Contrato de sockets
 
@@ -248,6 +266,7 @@ El rol va en `auth`. Proyector: `{ role: 'projector', key }` (si la clave está 
 {
   phase,
   publicUrl,
+  soloMs,                                    // duración del driver solo (SOLO_MS)
   driver: null | { id, name, connected },
   phones: [{ id, name, status, registered, parts, inherited, solo }],
   // status: waiting | painting | done | joined | out | driver | sent | idle | working | off | offline
@@ -272,6 +291,7 @@ El rol va en `auth`. Proyector: `{ role: 'projector', key }` (si la clave está 
 ```js
 {
   phase,
+  soloMs,
   me: { id, name, role: 'driver' | 'worker' | 'none', registered, off, offCause, lostTo, working, rounds, soloDone, top, medals },
   solo: null | { seed, total, remainingMs, durationMs, over, msPerPoint, top },   // solo en el paso solo
   dataKey: '3:2',                // cambia con cada vuelta a mano; clave para sessionStorage

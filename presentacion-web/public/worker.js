@@ -39,6 +39,11 @@
   let hintTimer = null;
   let lastPainted = -1; // index that just got painted, for the pop animation
 
+  // How to play: a few practice points that do not count. One per center,
+  // each far closer to one center than to the others.
+  const PRACTICE = [{ x: 74, y: 76 }, { x: 14, y: 62 }, { x: 66, y: 16 }];
+  let practiceDone = 0;
+
   // Step 2: the driver alone with every point.
   const solo = { seed: null, points: [], done: 0, endsAt: null };
 
@@ -205,6 +210,7 @@
     role.dataset.role = me.role;
     document.title = `Compu ${pad(me.id)} · Clúster`;
     if (state.phase === 'solo') syncSolo();
+    if (state.phase !== 'howto') practiceDone = 0;
     if (state.phase !== 'combine') taskUi = null;
     reactToGame();
     if (me.off) { clearTimeout(taskTimer); taskUi = null; }
@@ -256,6 +262,7 @@
     if (me.off) return 'off';
     if (state.spin) return 'spin';
     if (phase === 'lobby') return 'lobby';
+    if (phase === 'howto') return practiceDone >= PRACTICE.length ? 'howtoReady' : 'howto';
     if (phase === 'solo') return soloFinished() ? 'soloOver' : 'solo';
     if (me.role === 'driver') {
       if (phase === 'manager') return 'driverAsk';
@@ -347,6 +354,7 @@
   const eyebrow = (text, ico = 'smartphone') => `<p class="eyebrow">${icon(ico)}<span>${text}</span></p>`;
   const waiting = (text) => `<div class="waiting"><span class="pulse"></span><span>${text}</span></div>`;
   const dock = (inner) => `<div class="dock"><div class="dock-inner">${inner}</div></div>`;
+  const soloSecs = () => Math.round((state.soloMs || 20000) / 1000);
   const picks = () => `<p class="hint" id="hint" aria-live="polite"></p>
     <div class="picks">${NAMES.map((nm, j) => `<button class="pick" type="button" data-pick="${j}">${swatch(j)}<span>${nm}</span></button>`).join('')}</div>`;
 
@@ -383,6 +391,33 @@
         </div>
         ${waiting('Esperá: ya arrancamos.')}
         <p class="note">${icon('circle-alert')}<span>Dejá la pantalla prendida y esta pestaña abierta.</span></p>`;
+    },
+
+    // ---------------- how to play: practice, then wait for the clock
+
+    howto() {
+      const i = practiceDone;
+      const dots = PRACTICE.map((_, k) => `<i class="pdot${k < i ? ' on' : ''}${k === i ? ' now' : ''}"></i>`).join('');
+      return `
+        ${eyebrow('Práctica: no cuenta', 'hand')}
+        <div class="head">
+          <h1>Cómo se juega</h1>
+          <div class="pdots" aria-hidden="true">${dots}</div>
+        </div>
+        <p class="ask">Tocá el color del <b>centro</b> que le queda más cerca al punto que titila.</p>
+        ${plotSvg({ pts: PRACTICE, labelOf: (k, p) => (k < i ? correctOf(p) : -1), current: i, pop: lastPainted, label: 'Punto de práctica y los tres centros' })}
+        ${dock(picks())}`;
+    },
+
+    howtoReady() {
+      return `
+        <div class="result">
+          <div class="result-icon ok">${icon('check')}</div>
+          <h1>¡Ya sabés jugar!</h1>
+          <p class="lead">Cuando arranque vas a ser <b>el driver</b>: vas a tener todos los puntos y ${soloSecs()} segundos. Pintá todos los que puedas.</p>
+        </div>
+        ${labeledPlot(PRACTICE.map((p) => ({ ...p, label: -1 })))}
+        ${waiting('Esperá: el reloj arranca desde el proyector.')}`;
     },
 
     // ---------------- step 2: the driver alone
@@ -639,10 +674,11 @@
     connect();
   });
 
-  function showHint(text) {
+  function showHint(text, ok = false) {
     const el = $('#hint');
     if (!el) return;
     el.textContent = text;
+    el.classList.toggle('is-ok', ok);
     el.classList.toggle('show', text !== '');
     clearTimeout(hintTimer);
     if (text) hintTimer = setTimeout(() => showHint(''), 3000);
@@ -659,6 +695,17 @@
 
   function onPick(pick) {
     const j = Number(pick.dataset.pick);
+    if (viewKey === 'howto') {
+      const p = PRACTICE[practiceDone];
+      if (!p) return;
+      if (j !== correctOf(p)) { wrong(pick); return; }
+      lastPainted = practiceDone;
+      practiceDone += 1;
+      vibrate(25);
+      render();
+      if (practiceDone < PRACTICE.length) showHint('¡Bien! Ese es el centro más cerca.', true);
+      return;
+    }
     if (viewKey === 'solo') {
       const p = solo.points[solo.done];
       if (!p || soloFinished()) return;

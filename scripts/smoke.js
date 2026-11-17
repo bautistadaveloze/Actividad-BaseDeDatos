@@ -105,7 +105,7 @@ const waitAll = (list, pred, label, ms) => Promise.all(list.map((c) => waitFor(c
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const isPoint = (p) => p && isNum(p.x) && isNum(p.y);
 const isCounts = (c) => Array.isArray(c) && c.length === 3 && c.every((n) => Number.isInteger(n) && n >= 0);
-const PHASES = ['lobby', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
+const PHASES = ['lobby', 'howto', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
 const MEDALS = ['driver', 'top', 'heir', 'fallen', 'survivor', 'worker', 'cluster'];
 const STATUSES = ['waiting', 'painting', 'done', 'joined', 'out', 'driver', 'sent', 'idle', 'working', 'off', 'offline'];
 
@@ -113,6 +113,7 @@ function checkProjectorShape(s, where) {
   const ok = (cond, what) => check(cond, `[${where}] state del proyector: ${what}`);
   ok(PHASES.includes(s.phase), 'phase');
   ok(typeof s.publicUrl === 'string', 'publicUrl');
+  ok(isNum(s.soloMs), 'soloMs');
   ok(s.driver === null || (isNum(s.driver.id) && typeof s.driver.name === 'string' && typeof s.driver.connected === 'boolean'), 'driver');
   ok(Array.isArray(s.phones) && s.phones.every((p) => isNum(p.id) && typeof p.name === 'string' && STATUSES.includes(p.status)
     && typeof p.registered === 'boolean' && isNum(p.parts) && isNum(p.inherited) && isNum(p.solo)), 'phones[{id,name,status,registered,parts,inherited,solo}]');
@@ -139,6 +140,7 @@ function checkProjectorShape(s, where) {
 function checkPhoneShape(s, where) {
   const ok = (cond, what) => check(cond, `[${where}] state del celular: ${what}`);
   ok(PHASES.includes(s.phase), 'phase');
+  ok(isNum(s.soloMs), 'soloMs');
   const m = s.me;
   ok(m && isNum(m.id) && typeof m.name === 'string' && ['driver', 'worker', 'none'].includes(m.role)
     && typeof m.off === 'boolean' && typeof m.working === 'boolean' && isNum(m.rounds) && isNum(m.soloDone)
@@ -246,6 +248,21 @@ async function activity(port) {
   await sleep(250);
   check(proj.state.phase === 'lobby', 'no se puede saltar pasos ni registrarse en lobby');
   check(proj.state.stats.registered === 0, 'nadie se registró en lobby');
+
+  step('howto: se explica cómo jugar y el reloj no arranca solo');
+  proj.socket.emit('phase', { phase: 'solo' });
+  await sleep(200);
+  check(proj.state.phase === 'lobby', 'de lobby no se salta directo a solo');
+  proj.socket.emit('phase', { phase: 'howto' });
+  await waitAll([proj, A, B, C, D, E], (s) => s.phase === 'howto', 'fase howto');
+  checkProjectorShape(proj.state, 'howto');
+  checkPhoneShape(A.state, 'howto');
+  check(proj.state.solo === null && A.state.solo === null, 'en howto todavía no hay trabajo solo');
+  check(proj.state.phones.every((p) => p.status === 'waiting'), 'en howto todos están "waiting"');
+  A.socket.emit('solo:progress', { done: 3 });
+  A.socket.emit('driver:ask');
+  await sleep(200);
+  check(proj.state.phase === 'howto' && proj.state.stats.registered === 0, 'en howto no se pinta ni se registra nadie');
 
   step('solo: cada celular es el driver con todos los puntos');
   proj.socket.emit('phase', { phase: 'solo' });
@@ -461,6 +478,8 @@ async function lonePhone(port) {
   const proj = connect(url, { role: 'projector', key: KEY });
   const P = phone(url, 'Sola');
   await waitFor(proj, (s) => s.phones.length === 1, 'un celular');
+  proj.socket.emit('phase', { phase: 'howto' });
+  await waitFor(P, (s) => s.phase === 'howto', 'howto');
   proj.socket.emit('phase', { phase: 'solo' });
   await waitFor(P, (s) => s.phase === 'solo' && s.solo, 'solo');
   P.socket.emit('solo:progress', { done: 3 });

@@ -17,7 +17,7 @@ const DRIVER_KEY = process.env.DRIVER_KEY || crypto.randomBytes(3).toString('hex
 const PUBLIC_URL = (process.env.PUBLIC_URL || `http://${lanAddress()}:${PORT}`).replace(/\/+$/, '');
 
 // The class goes through these steps in order (see presentacion-web/ACTIVIDAD.md).
-const PHASES = ['lobby', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
+const PHASES = ['lobby', 'howto', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
 const K = km.K;
 const MAX_PHONES = 150;
 const SOLO_MS = envMs('SOLO_MS', 20000); // "driver solo" countdown
@@ -134,7 +134,8 @@ function statusOf(p) {
   if (!p.connected) return 'offline';
   if (isDriver(p)) return 'driver';
   switch (S.phase) {
-    case 'lobby': return 'waiting';
+    case 'lobby':
+    case 'howto': return 'waiting';
     case 'solo': return S.solo && S.solo.over ? 'done' : 'painting';
     case 'manager': return p.registered ? 'joined' : 'waiting';
     case 'work':
@@ -405,6 +406,9 @@ function setPhase(phase) {
   const next = PHASES[PHASES.indexOf(S.phase) + 1];
   if (!next || phase !== next) return;
   switch (phase) {
+    case 'howto':
+      if (!phoneList().some((p) => p.connected)) return;
+      break;
     case 'solo':
       if (!phoneList().some((p) => p.connected)) return;
       startSolo();
@@ -733,6 +737,7 @@ function projectorSnapshot() {
   return {
     phase: S.phase,
     publicUrl: PUBLIC_URL,
+    soloMs: SOLO_MS,
     driver: driver ? { id: driver.id, name: driver.name, connected: driver.connected } : null,
     phones: phoneList().map((p) => ({
       id: p.id,
@@ -786,6 +791,7 @@ function phoneSnapshot(p, byPart) {
   const solo = S.phase === 'solo' && S.solo ? soloInfo() : null;
   const snap = {
     phase: S.phase,
+    soloMs: SOLO_MS,
     me: {
       id: p.id,
       name: p.name,

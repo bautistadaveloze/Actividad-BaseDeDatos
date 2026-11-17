@@ -6,9 +6,10 @@
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
 
-  const ORDER = ['lobby', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
+  const ORDER = ['lobby', 'howto', 'solo', 'manager', 'work', 'combine', 'fail', 'end'];
   const STEPS = [
     { id: 'lobby', label: 'Unirse' },
+    { id: 'howto', label: 'Cómo jugar' },
     { id: 'solo', label: 'Driver solo' },
     { id: 'manager', label: 'Cluster manager' },
     { id: 'work', label: 'Workers' },
@@ -22,6 +23,12 @@
     lobby: {
       title: 'Sumate con tu celular',
       lead: 'Escaneá el QR. Tu celular va a ser una computadora.',
+    },
+    howto: {
+      title: 'Cómo se juega',
+      lead: 'Cada punto se pinta del color del centro que le queda más cerca.',
+      main: 'Pintar un punto es decidir a qué grupo pertenece: al del centro más cercano.',
+      tech: 'En K-Means: asignar cada punto a su centro más cercano. Es el cálculo que se repite en cada vuelta.',
     },
     solo: {
       title: 'Paso 1 · Sos el driver',
@@ -155,7 +162,7 @@
   // Only forward, one step at a time; `reset` is the only way back.
   function canGo(s, id) {
     if (!s || ORDER.indexOf(id) !== ORDER.indexOf(s.phase) + 1) return false;
-    if (id === 'solo') return connectedCount(s) > 0;
+    if (id === 'howto' || id === 'solo') return connectedCount(s) > 0;
     if (id === 'work') return liveWorkers(s).length > 0;
     if (id === 'combine') return !!s.manual && s.manual.done > 0;
     return true;
@@ -393,7 +400,7 @@
 
   function renderCompus(s) {
     const titles = {
-      lobby: 'Compus conectadas', solo: 'Drivers pintando solos', manager: 'Compus en el clúster',
+      lobby: 'Compus conectadas', howto: 'Compus conectadas', solo: 'Drivers pintando solos', manager: 'Compus en el clúster',
     };
     const inCluster = s.phones.filter((p) => p.registered).length;
     const count = s.phase === 'manager' ? `${inCluster} de ${connectedCount(s) - (s.driver ? 1 : 0)}`
@@ -502,9 +509,112 @@
       head.classList.remove('enter');
       void head.offsetWidth;
       head.classList.add('enter');
-      const viewName = { lobby: 'lobby', solo: 'solo', manager: 'arch', end: 'end' }[s.phase] || 'plot';
+      const viewName = { lobby: 'lobby', howto: 'howto', solo: 'solo', manager: 'arch', end: 'end' }[s.phase] || 'plot';
       views.forEach((v) => { v.hidden = v.dataset.view !== viewName; });
     }
+  }
+
+  // ---------------- how to play: a looping example on the projector
+
+  // Example points, one per center, each far closer to one center than to
+  // the others. The demo paints them one by one, then starts over.
+  const HOWTO_POINTS = [{ x: 18, y: 70 }, { x: 72, y: 80 }, { x: 64, y: 18 }];
+  // Gray points around, like the phone shows while painting alone.
+  const HOWTO_DECOR = [
+    { x: 10, y: 84 }, { x: 30, y: 78 }, { x: 14, y: 56 }, { x: 34, y: 64 },
+    { x: 58, y: 88 }, { x: 84, y: 86 }, { x: 66, y: 70 }, { x: 88, y: 68 },
+    { x: 50, y: 12 }, { x: 74, y: 10 }, { x: 56, y: 30 }, { x: 88, y: 18 },
+  ];
+  // Stage timings inside one example, in ms: lines, nearest, painted, next.
+  const HOWTO_AT = [900, 2000, 3000, 4300];
+  const howtoSvg = $('#howtoPlot');
+  const howto = { built: false, timers: [], running: false, painted: null, lines: [], cur: null, ring: null, key: '' };
+
+  const nearestOf = (p, centers) => centers.reduce((best, c, k) =>
+    ((p.x - c.x) ** 2 + (p.y - c.y) ** 2 < (p.x - centers[best].x) ** 2 + (p.y - centers[best].y) ** 2 ? k : best), 0);
+
+  function demoShape(label, s) {
+    const fill = `var(--c${label})`;
+    if (label === 0) return mk('circle', { r: s, fill });
+    if (label === 1) { const h = s * 0.9; return mk('rect', { x: -h, y: -h, width: 2 * h, height: 2 * h, rx: s * 0.12, fill }); }
+    const r = s * 1.25;
+    return mk('path', { d: `M0 ${-r} L${r * 0.94} ${r * 0.67} L${-r * 0.94} ${r * 0.67}Z`, fill, 'stroke-linejoin': 'round' });
+  }
+
+  function buildHowto(centers) {
+    howtoSvg.replaceChildren();
+    const g = mk('g', { class: 'grid' }, howtoSvg);
+    mk('rect', { x: 0, y: 0, width: 100, height: 100, rx: 1.5, class: 'plane' }, g);
+    for (let v = 20; v < 100; v += 20) {
+      mk('line', { x1: v, y1: 0, x2: v, y2: 100 }, g);
+      mk('line', { x1: 0, y1: v, x2: 100, y2: v }, g);
+    }
+    const decor = mk('g', { class: 'decor' }, howtoSvg);
+    HOWTO_DECOR.forEach((p) => mk('circle', { cx: p.x, cy: sy(p.y), r: 1.6 }, decor));
+    const lines = mk('g', { class: 'lines' }, howtoSvg);
+    howto.lines = centers.map((c, k) => mk('line', { class: `hl hl-${k}`, x2: c.x, y2: sy(c.y) }, lines));
+    howto.painted = mk('g', { class: 'painted' }, howtoSvg);
+    const cg = mk('g', { class: 'centers' }, howtoSvg);
+    centers.forEach((c, k) => {
+      const body = mk('g', { class: 'center-body', transform: `translate(${c.x} ${sy(c.y)})` }, cg);
+      body.appendChild(demoShape(k, 4.4));
+    });
+    howto.cur = mk('g', { class: 'cur' }, howtoSvg);
+    howto.ring = mk('circle', { class: 'ring', r: 5.5 }, howto.cur);
+    mk('circle', { class: 'dot', r: 2.4 }, howto.cur);
+    howto.built = true;
+  }
+
+  function howtoStage(stage, k) {
+    howtoSvg.dataset.stage = stage;
+    document.querySelectorAll('#howtoSteps .hs').forEach((li, i) => {
+      li.classList.toggle('is-on', i === { a: 0, b: 1, c: 2, d: 2 }[stage]);
+    });
+    document.querySelectorAll('#howtoPicks .hpick').forEach((b, j) => {
+      b.classList.toggle('is-on', (stage === 'c' || stage === 'd') && j === k);
+    });
+  }
+
+  function howtoExample(i, centers, animate) {
+    const p = HOWTO_POINTS[i];
+    const k = nearestOf(p, centers);
+    if (i === 0) howto.painted.replaceChildren();
+    howto.cur.setAttribute('transform', `translate(${p.x} ${sy(p.y)})`);
+    howto.lines.forEach((ln, j) => {
+      ln.setAttribute('x1', p.x);
+      ln.setAttribute('y1', sy(p.y));
+      ln.classList.toggle('is-near', j === k);
+    });
+    howtoStage('a', k);
+    if (!animate) { howtoStage('c', k); return; }
+    const at = (ms, fn) => howto.timers.push(setTimeout(fn, ms));
+    at(HOWTO_AT[0], () => howtoStage('b', k));
+    at(HOWTO_AT[1], () => howtoStage('c', k));
+    at(HOWTO_AT[2], () => {
+      const g = mk('g', { class: 'paint', transform: `translate(${p.x} ${sy(p.y)})` }, howto.painted);
+      mk('g', { class: 'paint-body' }, g).appendChild(demoShape(k, 2.6));
+      howtoStage('d', k);
+    });
+    at(HOWTO_AT[3], () => howtoExample((i + 1) % HOWTO_POINTS.length, centers, true));
+  }
+
+  function stopHowto() {
+    howto.timers.forEach(clearTimeout);
+    howto.timers = [];
+    howto.running = false;
+  }
+
+  function renderHowto(s) {
+    if (s.phase !== 'howto') { if (howto.running) stopHowto(); return; }
+    const secs = Math.round((s.soloMs || 20000) / 1000);
+    $('#howtoSecs').textContent = `${secs} segundos`;
+    const key = s.centers.map((c) => `${c.x},${c.y}`).join(';');
+    if (howto.running && key === howto.key) return;
+    stopHowto();
+    howto.key = key;
+    buildHowto(s.centers);
+    howto.running = true;
+    howtoExample(0, s.centers, !reducedMotion());
   }
 
   // ---------------- step 2: the driver alone
@@ -846,7 +956,8 @@
     }
 
     const main = {
-      lobby: { label: 'Empezar: cada uno es el driver', to: 'solo', ico: 'arrow-right' },
+      lobby: { label: 'Siguiente: cómo se juega', to: 'howto', ico: 'arrow-right' },
+      howto: { label: 'Arrancar: cada uno es el driver', to: 'solo', ico: 'play' },
       solo: { label: 'Siguiente: aparece el cluster manager', to: 'manager', ico: 'arrow-right' },
       manager: { label: 'Pedir compus al cluster manager', to: 'work', ico: 'server' },
       work: { label: 'Juntar resúmenes', to: 'combine', ico: 'merge' },
@@ -859,6 +970,7 @@
       mainBtn.innerHTML = `<span>${esc(main.label)}</span>${icon(main.ico)}`;
       mainBtn.disabled = !canGo(s, main.to);
       const ready = (s.phase === 'work' && s.manual && s.manual.total > 0 && s.manual.done >= s.manual.total)
+        || s.phase === 'howto'
         || (s.phase === 'solo' && s.solo && s.solo.over)
         || (s.phase === 'fail' && !s.manual);
       mainBtn.classList.toggle('is-ready', !!ready);
@@ -887,6 +999,7 @@
     renderCompus(s);
     renderSpin(s);
     renderCard(s);
+    renderHowto(s);
     renderSolo(s);
     renderArch(s);
     renderSide(s);

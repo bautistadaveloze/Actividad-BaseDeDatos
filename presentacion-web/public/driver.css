@@ -394,6 +394,51 @@ body:not([data-phase="fail"]) .lg-moved { display: none; }
 /* In step 5 the totals already name each group with its shape. */
 body[data-phase="combine"] .legend { display: none; }
 
+/* ------------------------------------------------------------ how to play */
+
+.v-howto { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 2.5rem; min-height: 0; }
+.howto-box { height: min(100%, 32rem); aspect-ratio: 1; max-width: 100%; min-height: 0; align-self: center; }
+#howtoPlot { display: block; width: 100%; height: 100%; overflow: visible; }
+#howtoPlot .plane { fill: var(--bg-raised); stroke: var(--line-strong); stroke-width: 0.3; }
+#howtoPlot .grid line { stroke: var(--fg); stroke-opacity: 0.07; stroke-width: 0.2; }
+#howtoPlot .decor circle { fill: var(--c-none); }
+#howtoPlot .center-body > * { stroke: var(--fg); stroke-width: 0.9; paint-order: stroke; stroke-linejoin: round; filter: drop-shadow(0 0 0.6px var(--bg)); }
+#howtoPlot .hl { stroke: var(--fg-3); stroke-width: 0.6; stroke-dasharray: 1.6 1.3; stroke-linecap: round; opacity: 0; transition: opacity 300ms var(--ease-out), stroke-width 300ms var(--ease-out); }
+#howtoPlot .hl-0.is-near { stroke: var(--c0); }
+#howtoPlot .hl-1.is-near { stroke: var(--c1); }
+#howtoPlot .hl-2.is-near { stroke: var(--c2); }
+#howtoPlot[data-stage="b"] .hl:not(.is-near) { stroke: var(--fg-2); }
+#howtoPlot[data-stage="b"] .hl, #howtoPlot[data-stage="c"] .hl { opacity: 1; }
+#howtoPlot[data-stage="b"] .hl.is-near { stroke: var(--fg-2); }
+#howtoPlot[data-stage="c"] .hl:not(.is-near) { opacity: 0.18; }
+#howtoPlot[data-stage="c"] .hl.is-near { stroke-width: 1.3; stroke-dasharray: none; }
+#howtoPlot .cur { transition: opacity 250ms var(--ease-out); }
+#howtoPlot .cur .dot { fill: var(--fg); stroke: var(--bg-raised); stroke-width: 0.6; paint-order: stroke; }
+#howtoPlot .cur .ring { fill: none; stroke: var(--accent); stroke-width: 0.9; transform-box: fill-box; transform-origin: center; animation: howto-ring 1s ease-in-out infinite; }
+#howtoPlot[data-stage="d"] .cur { opacity: 0; }
+#howtoPlot .paint-body > * { stroke: var(--bg-raised); stroke-width: 0.6; paint-order: stroke; }
+#howtoPlot .paint-body { transform-box: view-box; animation: pop 420ms var(--ease-out) backwards; }
+@keyframes howto-ring { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.45; transform: scale(1.3); } }
+
+.howto-side { display: flex; flex-direction: column; justify-content: center; gap: 2rem; min-width: 0; }
+.howto-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.hs { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr); gap: 1.1rem; align-items: start; padding: 1rem 1.2rem; border: var(--stroke) solid var(--line); border-radius: var(--radius-lg); background: var(--bg-raised); transition: border-color 250ms, background-color 250ms; }
+.hs-n { display: grid; place-items: center; width: 3.2rem; height: 3.2rem; border-radius: 50%; border: var(--stroke) solid var(--line-strong); font-size: 1.6rem; font-weight: 700; color: var(--fg-2); transition: background-color 250ms, color 250ms, border-color 250ms; }
+.hs-t { font-size: 1.9rem; line-height: 1.15; font-weight: 700; letter-spacing: -0.015em; }
+.hs-s { margin-top: 0.3rem; font-size: 1.3rem; line-height: 1.3; color: var(--fg-2); }
+.hs.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.hs.is-on .hs-n { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.hs-picks { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.7rem; }
+.hpick { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 0.8rem; border: 0.15rem solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg); font-size: 1.15rem; font-weight: 600; transition: border-color 200ms, transform 200ms var(--ease-out), background-color 200ms; }
+.hpick .shape { width: 1.05rem; height: 1.05rem; }
+.hpick.is-on { border-color: var(--fg); background: var(--bg-hover); transform: scale(1.08); }
+.howto-foot { font-size: 1.5rem; line-height: 1.3; color: var(--fg-2); max-width: 44rem; text-wrap: pretty; }
+.howto-foot strong { color: var(--fg); }
+
+@media (prefers-reduced-motion: reduce) {
+  #howtoPlot .cur .ring, #howtoPlot .paint-body { animation: none; }
+}
+
 /* ------------------------------------------------------------ step 2: driver solo */
 
 .v-solo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 26rem); gap: 2.5rem; min-height: 0; }

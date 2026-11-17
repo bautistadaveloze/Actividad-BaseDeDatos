@@ -430,3 +430,9 @@ body[data-view="spin"] { background: var(--warn-soft); }
 @media (prefers-reduced-motion: reduce) {
   .spinner .shape, .party .result-icon, .party h1, .podium, .medal, .inbox li, .clock.is-low { animation: none; }
 }
+
+/* ------------------------------------------------------------ how to play */
+
+body[data-view="howto"] .plot { width: min(100%, calc(100dvh - 19.25rem)); }
+body[data-view="howtoReady"] .plot { width: min(100%, calc(100dvh - 22rem)); }
+.hint.is-ok { border-color: var(--ok); }

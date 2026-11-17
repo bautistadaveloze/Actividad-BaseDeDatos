@@ -31,7 +31,7 @@
     },
     manager: {
       title: 'Paso 2 · Aparece el cluster manager',
-      lead: 'Sabe qué compus están libres y se las presta al driver. Sumá la tuya desde el celular.',
+      lead: 'Sabe qué compus están libres y se las presta al driver. Ya anotó la tuya como worker: mirá el celular.',
       main: 'Un driver solo no da abasto. El cluster manager junta compus para ayudarlo.',
       tech: 'En Spark: el cluster manager puede ser Standalone, YARN o Kubernetes. Reparte las máquinas.',
     },
@@ -64,8 +64,8 @@
     waiting: { icon: 'check', tone: 'ok', label: 'conectada' },
     painting: { icon: 'timer', tone: 'warn', label: 'pintando' },
     done: { icon: 'hourglass', tone: 'ok', label: 'terminó el tiempo' },
-    joined: { icon: 'user-plus', tone: 'accent', label: 'se sumó' },
-    out: { icon: 'hand', tone: 'mute', label: 'no se sumó' },
+    joined: { icon: 'user-plus', tone: 'accent', label: 'worker' },
+    out: { icon: 'hand', tone: 'mute', label: 'sin parte' },
     driver: { icon: 'crown', tone: 'driver', label: 'driver' },
     sent: { icon: 'send', tone: 'ok', label: 'envió el resumen' },
     idle: { icon: 'check', tone: 'ok', label: 'libre' },
@@ -73,8 +73,8 @@
     off: { icon: 'power-off', tone: 'bad', label: 'caída' },
     offline: { icon: 'wifi-off', tone: 'mute', label: 'sin conexión' },
   };
-  // In step 3 a connected phone that did not lend itself yet looks pending.
-  const NOT_YET = { icon: 'hand', tone: 'mute', label: 'todavía no se sumó' };
+  // In step 3 a connected phone the cluster manager did not sign up yet looks pending.
+  const NOT_YET = { icon: 'hand', tone: 'mute', label: 'anotando…' };
 
   const icon = (name) => `<svg class="icon" aria-hidden="true"><use href="/icons.svg#${name}"/></svg>`;
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -568,7 +568,7 @@
         count.classList.add('bump');
       }
     }
-    $('#poolNames').textContent = pool.length ? names(pool) : 'Todavía ninguna. Sumá la tuya desde el celular.';
+    $('#poolNames').textContent = pool.length ? names(pool) : 'Todavía ninguna. Conectá tu celular.';
     $('#archFoot').innerHTML = d
       ? `Cuando <strong>${esc(d.name)}</strong> pida compus desde su celular, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.`
       : 'Cuando el driver pida compus, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.';

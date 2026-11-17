@@ -40,11 +40,11 @@ La actividad es una simulación didáctica: los celulares no ejecutan Spark real
 
 ### 11:30–12:30 · Paso 2 · Aparece el cluster manager
 
-**Proyector:** un diagrama de tres cajas: **Driver (Ana)** → **Cluster manager (el proyector)** ← **Compus libres**. El número de compus libres sube a medida que la clase se suma.
+**Proyector:** un diagrama de tres cajas: **Driver (Ana)** → **Cluster manager (el proyector)** → **Compus libres**. El cluster manager anota solo a todas las compus conectadas.
 
-**Clase:** en el celular aparece "¿Prestás tu compu?" y el botón **Sumar mi compu al clúster**. Ana, en cambio, ve "Sos el driver" y el botón **Pedir compus al cluster manager**.
+**Clase:** sin tocar nada, el celular vibra y dice **"Vas a ser un worker"**: el cluster manager vio que su compu está libre y la anotó. Ana, en cambio, ve "Sos el driver" y el botón **Pedir compus al cluster manager**.
 
-**Vos:** esperá a que se sume la mayoría y pedile a Ana que toque **Pedir compus**. Si Ana no está o no quiere, tocá otra compu en la grilla para hacerla driver, o tocá **Pedir compus al cluster manager** en el proyector.
+**Vos:** dejá que lean su celular y pedile a Ana que toque **Pedir compus**. Si Ana no está o no quiere, tocá otra compu en la grilla para hacerla driver, o tocá **Pedir compus al cluster manager** en el proyector.
 
 > "El cluster manager no hace el trabajo: sabe qué compus están libres y se las presta al driver. En Spark puede ser YARN, Kubernetes o el modo Standalone."
 
@@ -130,7 +130,7 @@ Debajo: "21 partes · 126 puntos · 4 vueltas · 1 compu caída y ningún dato p
 ## Si algo falla
 
 - **Alguien no se conecta:** puede mirar el proyector. La actividad sigue sin él.
-- **Alguien entra tarde:** en cualquier paso puede tocar **Sumar mi compu** y recibe su parte en el momento.
+- **Alguien entra tarde:** el cluster manager lo anota como worker solo y recibe su parte en el momento.
 - **El driver se queda sin batería o no quiere:** en el paso 2, tocá otra compu en la grilla para hacerla driver. Después del paso 2, todo lo que hace el driver se puede hacer desde los botones del proyector.
 - **Alguien no termina de pintar:** se puede juntar igual desde el proyector; el driver completa lo que falta.
 - **Sin wifi:** usá el plan alternativo del informe, con puntos y centros impresos.

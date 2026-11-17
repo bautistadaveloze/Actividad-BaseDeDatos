@@ -12,14 +12,14 @@ Que alguien que recién empieza con el tema entienda, haciéndolo y en el mismo 
 4. El driver junta los resúmenes. Repetir eso hasta que no cambie es **entrenar un modelo** (K-Means).
 5. **Tolerancia a fallos:** si una compu se cae, otra hace su parte y no se pierde nada.
 
-Dura unos 7 minutos. Cada alumno pasa por los roles: primero es el driver solo, después presta su celular y trabaja como worker. Quien pintó más en el primer paso queda como el driver del clúster y maneja desde su celular.
+Dura unos 7 minutos. Cada alumno pasa por los roles: primero es el driver solo, después el cluster manager le dice que va a ser un worker y trabaja como tal. Quien pintó más en el primer paso queda como el driver del clúster y maneja desde su celular.
 
 ## 2. Principios (obligatorios)
 
-- **Una sola acción por pantalla en el celular.** Pintar, sumar la compu, enviar el resumen, pedir compus, juntar.
+- **Una sola acción por pantalla en el celular.** Pintar, enviar el resumen, pedir compus, juntar. Sumarse al clúster no es una acción: el cluster manager anota solo a cada compu libre.
 - **Sin números para leer:** no se muestran coordenadas, sumas ni fórmulas. Todo se resuelve mirando el dibujo.
 - **Pocas palabras técnicas, siempre las mismas:** driver, cluster manager y worker aparecen en el celular porque son el tema de la actividad. El resto (partición, task, executor, reduce, iteración) solo en el proyector y siempre después de la palabra común.
-- **Nadie se queda afuera:** quien entra tarde puede sumar su compu en cualquier paso; quien se equivoca puede reintentar; si alguien no termina, el proyector puede juntar igual.
+- **Nadie se queda afuera:** quien entra tarde queda anotado como worker solo y, si ya hay datos, recibe su parte en el momento; quien se equivoca puede reintentar; si alguien no termina, el proyector puede juntar igual.
 - **El proyector nunca depende del celular del driver:** todo lo que hace el driver también se puede hacer desde el proyector.
 - Textos en español rioplatense (vos), frases cortas. Sin emojis: se usan los íconos de `/icons.svg`.
 
@@ -81,27 +81,26 @@ Todos los celulares reciben **el mismo trabajo completo**: `6 × celulares` punt
 Al entrar se elige el driver: quien más pintó en el paso anterior (empate: quien llegó primero). Con un solo celular conectado no hay driver de celular: el proyector hace de driver y ese celular puede ser worker.
 
 **Proyector**
-- Diagrama grande de tres cajas: **Driver** (nombre) → "Pide compus" → **Cluster manager** (el proyector) ← "Se suman" ← **Compus libres** (número grande que salta con cada una y algunos nombres).
+- Diagrama grande de tres cajas: **Driver** (nombre) → "Pide compus" → **Cluster manager** (el proyector) → "Anota las libres" → **Compus libres** (número grande y algunos nombres). El cluster manager anota solo a todas las compus conectadas que no son el driver: nadie toca nada.
 - Abajo: "Cuando Ana pida compus desde su celular, el cluster manager le presta todas estas: van a ser los workers."
-- En el costado aparecen dos tarjetas fijas para el resto de la actividad: Driver y Cluster manager. La grilla pasa a "Compus en el clúster: 10 de 21"; tocar una compu la hace driver (para cambiarlo si hace falta).
+- En el costado aparecen dos tarjetas fijas para el resto de la actividad: Driver y Cluster manager. La grilla pasa a "Compus en el clúster: 10 de 21"; tocar una compu la hace driver (para cambiarlo si hace falta); el driver anterior pasa a ser worker solo.
 - Botón: "Pedir compus al cluster manager" (necesita al menos un worker). Lo ideal es que lo toque el driver desde su celular.
 
 **Celular (resto)**
-- "Apareció el cluster manager" · "¿Prestás tu compu?" · "Ana es el driver y solo no llega…", un mini diagrama y el botón "Sumar mi compu al clúster".
-- Después: "Tu compu está en el clúster. Ahora sos un worker. Esperá: Ana le va a pedir compus al cluster manager."
+- Sin tocar nada, vibra y muestra: "Apareció el cluster manager" · "Vas a ser un worker" · "Ana es el driver y solo no llega. El cluster manager vio que tu compu está libre y te anotó para ayudarlo.", un mini diagrama (Driver → Cluster manager → Vos: worker) y "Esperá: Ana le va a pedir compus al cluster manager."
 
 **Celular (driver)**
-- "Sos el driver", "Tenés todos los datos y solo no llegás. Pedile compus al cluster manager.", el número de compus que se sumaron y el botón "Pedir compus al cluster manager".
+- "Sos el driver", "Tenés todos los datos y solo no llegás. Pedile compus al cluster manager.", el número de compus libres anotadas como workers y el botón "Pedir compus al cluster manager".
 
 ### 4.4 `work` · Paso 3 · Los workers pintan su parte
 
-Cada compu sumada recibe **una parte de 6 puntos** (2 de cada grupo real). El driver no tiene parte: espera resúmenes.
+Cada worker recibe **una parte de 6 puntos** (2 de cada grupo real). El driver no tiene parte: espera resúmenes.
 
 **Celular (worker)**
 - "Sos un worker: pintá tu parte", "Punto 2 de 6", dibujo de sus 6 puntos y los 3 centros, los tres botones.
 - Al pintar los 6: "Pintaste tu parte", la cantidad por color, "Este es tu resumen: cuántos puntos hay de cada color. Es lo único que viaja a Ana, no tus puntos." y el botón "Enviar resumen a Ana".
 - Después: "Resumen enviado. Ana lo junta con los resúmenes de las demás compus. Mirá el proyector."
-- Quien no se sumó ve "Faltás vos" y puede sumarse: recibe su parte en el momento.
+- Quien entra tarde queda anotado como worker solo y recibe su parte en el momento.
 
 **Celular (driver):** "Llegaron 12 de 18 resúmenes", una barra y la lista de resúmenes (nombre y cantidad por color; si alguien hizo la parte de otro, lo dice). Botón "Juntar resúmenes", habilitado cuando llegaron todos.
 
@@ -210,7 +209,7 @@ CONVERGED_SHIFT = 0.5, MAX_ROUNDS = 15
 - `lobby → solo`: necesita un celular conectado. Arranca la cuenta regresiva.
 - `solo`: `solo:progress { done }` solo sube, nunca pasa el total y se acepta hasta 1,5 s después del final. El ranking ordena por cantidad y desempata por quién llegó antes.
 - `solo → manager`: corta la cuenta si seguía y elige el driver (4.3).
-- `manager`: `register` suma la compu (el driver no puede). El proyector puede cambiar el driver con `driver { id }`; el nuevo driver deja de ser worker.
+- `manager`: al entrar, el servidor anota como worker a cada celular conectado que no es el driver (no hay evento para sumarse). Quien se conecta después, en `manager`, `work`, `combine` o `fail`, queda anotado al conectarse y, si ya hay datos, recibe su parte. El proyector puede cambiar el driver con `driver { id }`; el nuevo driver deja de ser worker y el anterior pasa a serlo.
 - `manager → work`: necesita un worker conectado. Crea una parte por worker (vuelta a mano 1).
 - `work → combine`: necesita al menos un resumen. Termina las partes que falten, hace un paso de K-Means y guarda los datos del join (`join`).
 - `combine`: vueltas automáticas (6.4). Solo el driver o el proyector las arrancan.
@@ -301,7 +300,6 @@ Además: `task { round, centers }` en las vueltas automáticas.
 | Proyector | `spin` / `kill` / `revive` | — / `{ id }` / — | Caídas (6.5) |
 | Proyector | `reset` | — | Vuelve a `lobby` |
 | Celular | `solo:progress` | `{ done }` | Cuántos pintó solo |
-| Celular | `register` | — | Suma su compu al clúster |
 | Celular | `part:submit` | `{ part }` | Manda el resumen de esa parte (tiene que ser suya y no enviada) |
 | Celular | `task:result` | `{ round, sums: [{ sx, sy, n } × 3] }` | Responde una vuelta automática |
 | Driver | `driver:ask` | — | Pide compus (`manager → work`) |

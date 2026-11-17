@@ -74,7 +74,7 @@ app.use(express.static(publicDir, { extensions: ['html'], index: false }));
 
 // phone: { id, token, name, socket, connected, registered, off, offCause,
 //          lostTo, hadPart, pending, rounds, solo: { done, at }, facts, deadTimer }
-//   registered = lent its phone to the cluster manager (it is a worker)
+//   registered = the cluster manager signed it up as a worker
 //   off = knocked out by the roulette, by a tap, or for leaving mid-task ('lost')
 //   facts = { top, heir, fallen, survivor }: medal facts for this class
 // part:  { id, home, owner, sent, startAt, sentAt, by, ms }
@@ -268,18 +268,21 @@ function setDriver(id) {
   if (S.phase !== 'manager') return;
   const p = S.byId.get(id);
   if (!p || !p.connected || isDriver(p)) return;
+  const old = S.byId.get(S.driverId);
   S.driverId = p.id;
   p.registered = false;
+  if (old) enlist(old); // the old driver is free now: it becomes a worker
   broadcast();
 }
 
-function register(p) {
+// The cluster manager signs up every free phone by itself: nobody has to
+// tap anything, each phone is just told "you are a worker". Once the data
+// exists, a phone that arrives late gets its part right away.
+function enlist(p) {
   if (!['manager', 'work', 'combine', 'fail'].includes(S.phase)) return;
-  if (isDriver(p) || p.registered || p.off || !p.connected) return;
+  if (isDriver(p) || p.off || !p.connected) return;
   p.registered = true;
-  // Once the data exists, whoever lends a phone late gets a part right away.
   if (S.phase !== 'manager' && !p.hadPart) newPart(p);
-  broadcast();
 }
 
 // ---------------------------------------------------------------- data (step 4)
@@ -409,6 +412,8 @@ function setPhase(phase) {
     case 'manager':
       endSolo();
       chooseDriver();
+      S.phase = phase; // enlist() only signs up phones once the manager is here
+      for (const p of phoneList()) enlist(p);
       break;
     case 'work':
       if (!liveWorkers().length) return;
@@ -909,13 +914,12 @@ function attachPhone(socket, auth) {
   p.deadTimer = null;
   // Back after the cluster gave up on it: a free worker again, without its part.
   if (p.off && p.offCause === 'lost') { p.off = false; p.offCause = null; }
-  // Lent its phone but was away when the data was handed out.
-  if (p.registered && !p.hadPart && !isDriver(p) && ['work', 'combine', 'fail'].includes(S.phase)) newPart(p);
+  // Arrived late, or was away when the data was handed out.
+  enlist(p);
   broadcast();
 
   const on = (event, fn) => guarded(socket, event, fn);
   on('solo:progress', (payload) => soloProgress(p, payload));
-  on('register', () => register(p));
   on('part:submit', (payload) => partSubmit(p, payload));
   on('task:result', (payload) => taskResult(p, payload));
   on('driver:ask', () => { if (isDriver(p) && S.phase === 'manager') setPhase('work'); });

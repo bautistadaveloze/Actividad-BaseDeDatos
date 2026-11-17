@@ -1,8 +1,8 @@
 'use strict';
 
 // Phone screen: one view per moment of the class, one action per view.
-// The phone first plays the driver alone, then lends itself to the cluster
-// manager and works as a worker (or, for one person, as the driver).
+// The phone first plays the driver alone, then the cluster manager signs it
+// up and it works as a worker (or, for one person, as the driver).
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const NAMES = ['Violeta', 'Celeste', 'Rosa'];
@@ -262,8 +262,9 @@
       if (phase === 'combine') return 'driverCombine';
       return state.manual ? 'driverInbox' : 'driverDone';
     }
-    if (!me.registered) return phase === 'manager' ? 'offer' : 'offerLate';
-    if (phase === 'manager') return 'joined';
+    // The cluster manager signs every phone up by itself; this lasts an instant.
+    if (!me.registered) return 'connecting';
+    if (phase === 'manager') return 'assigned';
     if (phase === 'combine') return 'combine';
     if (!state.manual) return 'failDone';
     if (!state.parts.length) return 'idle';
@@ -277,6 +278,7 @@
     const changed = view !== viewKey;
     if (changed && view === 'end') $('#banners').replaceChildren();
     if (changed) lastPainted = -1;
+    if (changed && view === 'assigned' && viewKey !== null) vibrate([60, 40, 60]); // "you are a worker"
     viewKey = view;
     document.body.dataset.view = view;
     const html = VIEWS[view]();
@@ -424,40 +426,20 @@
 
     // ---------------- step 3: the cluster manager
 
-    offer() {
+    assigned() {
       const d = state.driver ? `<b>${esc(state.driver.name)}</b> es el driver` : 'El driver';
       return `
         <div class="stack">
           ${eyebrow('Apareció el cluster manager', 'server')}
-          <h1>¿Prestás tu compu?</h1>
-          <p class="lead">${d} y solo no llega. El cluster manager junta compus libres para ayudarlo.</p>
+          <h1>Vas a ser un worker</h1>
+          <p class="lead">${d} y solo no llega. El cluster manager vio que tu compu está libre y te anotó para ayudarlo.</p>
         </div>
         <div class="arch-mini" aria-hidden="true">
           <span class="node">${icon('crown')}Driver</span><span class="arr">${icon('arrow-right')}</span>
-          <span class="node hl">${icon('server')}Cluster manager</span><span class="arr">${icon('arrow-left')}</span>
-          <span class="node">${icon('smartphone')}Vos</span>
+          <span class="node">${icon('server')}Cluster manager</span><span class="arr">${icon('arrow-right')}</span>
+          <span class="node hl">${icon('smartphone')}Vos: worker</span>
         </div>
-        ${dock(`<button class="btn btn-primary btn-lg btn-block cta" type="button" data-register>${icon('user-plus')}Sumar mi compu al clúster</button>`)}`;
-    },
-
-    offerLate() {
-      return `
-        <div class="stack">
-          ${eyebrow('El clúster ya está trabajando', 'server')}
-          <h1>Faltás vos</h1>
-          <p class="lead">Sumá tu compu: el cluster manager te da una parte de los datos.</p>
-        </div>
-        ${dock(`<button class="btn btn-primary btn-lg btn-block cta" type="button" data-register>${icon('user-plus')}Sumar mi compu al clúster</button>`)}`;
-    },
-
-    joined() {
-      return `
-        <div class="result">
-          <div class="result-icon ok">${icon('check')}</div>
-          <h1>Tu compu está en el clúster</h1>
-          <p class="lead">Ahora sos un <b>worker</b>. Esperá: ${esc(driverName())} le va a pedir compus al cluster manager.</p>
-        </div>
-        ${waiting(`Se sumaron ${plural(state.workers, 'compu', 'compus')}.`)}`;
+        ${waiting(`Esperá: ${esc(driverName())} le va a pedir compus al cluster manager.`)}`;
     },
 
     driverAsk() {
@@ -468,8 +450,8 @@
           <h1>Sos el driver</h1>
           <p class="lead">Tenés todos los datos y solo no llegás. Pedile compus al cluster manager.</p>
         </div>
-        <div class="big-count"><b class="mono">${n}</b><span>${n === 1 ? 'compu se sumó' : 'compus se sumaron'} al clúster</span></div>
-        ${dock(`${n ? '' : '<p class="dock-note">Esperá a que se sumen compus.</p>'}
+        <div class="big-count"><b class="mono">${n}</b><span>${n === 1 ? 'compu libre anotada' : 'compus libres anotadas'} como ${n === 1 ? 'worker' : 'workers'}</span></div>
+        ${dock(`${n ? '' : '<p class="dock-note">Esperá a que se conecten compus.</p>'}
           <button class="btn btn-primary btn-lg btn-block cta" type="button" data-ask ${n ? '' : 'disabled'}>${icon('server')}Pedir compus al cluster manager</button>`)}`;
     },
 
@@ -709,10 +691,7 @@
     if (pick) { onPick(pick); return; }
     const btn = e.target.closest('button');
     if (!btn || btn.disabled || !state) return;
-    if (btn.hasAttribute('data-register')) {
-      btn.disabled = true;
-      emit('register');
-    } else if (btn.hasAttribute('data-ask')) {
+    if (btn.hasAttribute('data-ask')) {
       btn.disabled = true;
       emit('driver:ask');
     } else if (btn.hasAttribute('data-join')) {

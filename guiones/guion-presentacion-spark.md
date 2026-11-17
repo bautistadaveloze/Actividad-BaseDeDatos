@@ -613,7 +613,7 @@ Son siete diapositivas sobre el mismo dibujo. Las piezas se mueven de una a otra
 - Contá los pasos rápido, sin detalle (si la diapositiva todavía dice "Seis pasos", usá esta lista):
   1. Se unen con el celular.
   2. Cada uno es **el driver**, solo con todos los puntos y 20 segundos. Quien pinta más queda como driver.
-  3. Aparece **el cluster manager** (el proyector) y cada uno le presta su celular.
+  3. Aparece **el cluster manager** (el proyector) y le dice a cada celular libre que va a ser un worker.
   4. Los celulares son **workers**: cada uno pinta su parte de 6 puntos y le manda un resumen al driver.
   5. El driver junta los resúmenes, mueve los centros y repite hasta que no cambian.
   6. Se cae una compu y otra hace su parte: no se pierde nada.
@@ -650,7 +650,7 @@ En cada paso conectá lo que pasa en los celulares con una diapositiva:
 |---|---|---|---|
 | Unirse | Cada celular entra y recibe un número | "Cada celular es una compu" | 6 |
 | Driver solo | Cada uno pinta solo todos los puntos durante 20 segundos y nadie termina | "El driver es el programa que tiene el trabajo. Solo, con todos los datos, no llega" | 5, 26 |
-| Cluster manager | Aparece el proyector como cluster manager y la clase le presta sus celulares | "El cluster manager no trabaja: sabe qué compus están libres y se las presta al driver" | 7, 27 |
+| Cluster manager | Aparece el proyector como cluster manager y anota a cada celular libre como worker | "El cluster manager no trabaja: sabe qué compus están libres y se las presta al driver" | 7, 27 |
 | Workers | Cada uno pinta su parte de 6 puntos y le manda un resumen al driver | "Cada parte es una partición; pintarla es una tarea. Viajan resúmenes, no puntos" | 28–32 |
 | Juntar | El driver junta los resúmenes, mueven los centros y repiten solos | "Juntar es el reduce. Repetir hasta que no cambie es entrenar. Por eso conviene la memoria" | 20, 22, 33 |
 | Se cae una | Se cae una compu y otra pinta su parte | "No se perdió nada: el cluster manager se dio cuenta y la tarea se hizo en otra compu" | 14, 36 |

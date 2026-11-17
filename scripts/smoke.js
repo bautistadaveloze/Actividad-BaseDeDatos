@@ -277,47 +277,46 @@ async function activity(port) {
   await sleep(200);
   check(proj.state.solo.leaders.find((l) => l.name === 'Bruno').done === 5, 'después del tiempo no se cuenta más');
 
-  step('manager: aparece el cluster manager y se elige el driver');
+  step('manager: aparece el cluster manager, elige el driver y anota a los workers');
+  E.socket.disconnect(); // Eze is away when the cluster manager shows up
+  await waitFor(proj, (s) => s.phones.find((p) => p.name === 'Eze').status === 'offline', 'Eze se desconecta');
   proj.socket.emit('phase', { phase: 'manager' });
   await waitAll([proj, A], (s) => s.phase === 'manager', 'fase manager');
   check(proj.state.driver && proj.state.driver.name === 'Ana', 'el driver es la que más pintó');
   await waitFor(A, (s) => s.me.role === 'driver', 'Ana es driver');
-  check(B.state.me.role === 'none', 'los demás todavía no se sumaron');
+  await waitAll([B, C, D], (s) => s.me.role === 'worker' && s.me.registered, 'los demás quedan anotados como workers sin tocar nada');
   checkPhoneShape(A.state, 'manager driver');
-  A.socket.emit('register');
-  proj.socket.emit('phase', { phase: 'work' });
-  await sleep(200);
-  check(proj.state.phase === 'manager', 'sin workers no se puede repartir');
-  check(A.state.me.role === 'driver', 'el driver no se registra como worker');
-  [B, C, D].forEach((c) => c.socket.emit('register'));
-  await waitFor(proj, (s) => s.stats.registered === 3, '3 compus se sumaron');
+  checkPhoneShape(B.state, 'manager worker');
+  check(proj.state.stats.registered === 3, `3 compus anotadas (hay ${proj.state.stats.registered})`);
   check(proj.state.phones.find((p) => p.name === 'Bruno').status === 'joined', 'status "joined"');
-  check(proj.state.phones.find((p) => p.name === 'Eze').status === 'waiting', 'quien no se sumó sigue "waiting"');
+  check(!proj.state.phones.find((p) => p.name === 'Eze').registered, 'quien no estaba conectada no queda anotada');
+  A.socket.emit('register');
+  await sleep(200);
+  check(A.state.me.role === 'driver', 'el driver no es worker');
   const idOf = (c) => c.state.me.id;
   proj.socket.emit('driver', { id: idOf(B) });
   await waitFor(B, (s) => s.me.role === 'driver', 'el proyector cambia el driver');
-  check(A.state.me.role === 'none', 'la driver anterior queda libre');
+  await waitFor(A, (s) => s.me.role === 'worker', 'la driver anterior pasa a ser worker');
   proj.socket.emit('driver', { id: idOf(A) });
   await waitFor(A, (s) => s.me.role === 'driver', 'Ana vuelve a ser driver');
-  await waitFor(B, (s) => s.me.role === 'none', 'Bruno tiene que volver a sumarse');
-  B.socket.emit('register');
-  await waitFor(B, (s) => s.me.role === 'worker', 'Bruno vuelve a sumarse');
+  await waitFor(B, (s) => s.me.role === 'worker', 'Bruno vuelve a ser worker solo');
+  check(proj.state.stats.registered === 3, 'siguen 3 workers');
   C.socket.emit('driver:ask');
   await sleep(200);
   check(proj.state.phase === 'manager', 'solo el driver puede pedir compus');
   A.socket.emit('driver:ask');
 
   step('work: cada worker pinta su parte y manda el resumen');
-  await waitAll([proj, A, B, C, D, E], (s) => s.phase === 'work', 'fase work');
+  await waitAll([proj, A, B, C, D], (s) => s.phase === 'work', 'fase work');
   check(proj.state.manual && proj.state.manual.round === 1 && proj.state.manual.total === 3, 'una parte por worker');
   check([B, C, D].every((c) => c.state.parts.length === 1 && c.state.parts[0].points.length === 6
     && c.state.parts[0].points.every((p) => p.label === -1) && c.state.parts[0].from === null), 'cada worker tiene 6 puntos sin pintar');
   check(A.state.parts.length === 0 && A.state.progress.total === 3, 'el driver no tiene parte: espera resúmenes');
-  check(E.state.parts.length === 0 && E.state.me.role === 'none', 'quien no se sumó no recibe datos');
   checkPhoneShape(B.state, 'work');
   checkProjectorShape(proj.state, 'work');
-  E.socket.emit('register');
-  await waitFor(E, (s) => s.parts.length === 1 && s.parts[0].points.every((p) => p.label === -1), 'Eze se suma tarde y recibe su parte');
+  E.socket.connect();
+  await waitFor(E, (s) => s.phase === 'work' && s.me.role === 'worker' && s.parts.length === 1
+    && s.parts[0].points.every((p) => p.label === -1), 'Eze vuelve tarde: el cluster manager lo anota y recibe su parte');
   await waitFor(proj, (s) => s.manual.total === 4, '4 partes');
   const partOf = (c) => c.state.parts[0].id;
   B.socket.emit('part:submit', { part: partOf(B) });
@@ -428,9 +427,8 @@ async function activity(port) {
   await waitFor(proj, (s) => !s.phones.some((p) => p.status === 'off') && s.lastFail === null, 'se prenden todas');
   check(proj.state.points.every((p) => !p.moved), 'cada parte vuelve a su dueño');
   const F = phone(url, 'Fede');
-  await waitFor(F, (s) => s.phase === 'fail' && s.me.role === 'none', 'Fede entra tarde');
-  F.socket.emit('register');
-  await waitFor(F, (s) => s.parts.length === 1 && s.parts[0].points.every((p) => p.label >= 0), 'Fede recibe una parte ya pintada');
+  await waitFor(F, (s) => s.phase === 'fail' && s.me.role === 'worker' && s.parts.length === 1
+    && s.parts[0].points.every((p) => p.label >= 0), 'Fede entra tarde, queda anotado y recibe una parte ya pintada');
 
   step('end');
   proj.socket.emit('phase', { phase: 'end' });
@@ -469,8 +467,7 @@ async function lonePhone(port) {
   proj.socket.emit('phase', { phase: 'manager' });
   await waitFor(proj, (s) => s.phase === 'manager', 'manager');
   check(proj.state.driver === null, 'con un solo celular el driver es el proyector');
-  P.socket.emit('register');
-  await waitFor(proj, (s) => s.stats.registered === 1, 'se suma');
+  await waitFor(proj, (s) => s.stats.registered === 1, 'el cluster manager la anota sola');
   proj.socket.emit('phase', { phase: 'work' });
   await waitFor(P, (s) => s.phase === 'work' && s.parts.length === 1, 'recibe su parte');
   proj.socket.emit('phase', { phase: 'combine' });

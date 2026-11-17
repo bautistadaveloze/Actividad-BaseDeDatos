@@ -4,8 +4,8 @@
 //   npm run bots -- 25            (25 bots against localhost:3000)
 //   URL=https://... npm run bots -- 10
 // Bots play every step like a person would: they paint alone at a human pace
-// (one point every 0.8–1.8 s), lend their phone to the cluster manager a few
-// seconds after it appears, paint their part and send the summary, and answer
+// (one point every 0.8–1.8 s), get signed up as workers by the cluster
+// manager (no tap needed), paint their part and send the summary, and answer
 // the automatic rounds with sums they really compute. A bot that ends up as
 // the driver does nothing: the projector buttons drive the class.
 
@@ -25,7 +25,6 @@ function bot(i) {
   const socket = io(URL, { auth: { role: 'worker', token: `bot-${i}`, name } });
   let state = null;
   let soloSeed = null;
-  let registering = false;
   const painting = new Set(); // `${dataKey}:${part}` in progress or sent
 
   async function paintSolo(seed) {
@@ -50,12 +49,6 @@ function bot(i) {
     if (s.phase === 'solo' && s.solo && !s.solo.over && s.solo.seed !== soloSeed) {
       soloSeed = s.solo.seed;
       paintSolo(soloSeed);
-    }
-    if (['manager', 'work', 'fail'].includes(s.phase) && s.me.role === 'none' && !s.me.off && !registering) {
-      registering = true;
-      await sleep(between(800, 5000));
-      if (state && state.me.role === 'none') socket.emit('register');
-      registering = false;
     }
     if (s.manual && !s.me.off) {
       for (const part of s.parts) {

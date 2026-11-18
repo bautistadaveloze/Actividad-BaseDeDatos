@@ -1,8 +1,8 @@
 'use strict';
 
-// Projector screen. It plays the cluster manager, shows what every phone is
-// doing and keeps a button for every step, so the class never depends on
-// the phone that plays the driver.
+// Projector screen. It plays the cluster manager and shows what every phone
+// is doing. From step 2 on, whoever presents is the driver: every step and
+// every driver action (asking for computers, joining) is a button here.
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -73,7 +73,6 @@
     done: { icon: 'hourglass', tone: 'ok', label: 'terminó el tiempo' },
     joined: { icon: 'user-plus', tone: 'accent', label: 'worker' },
     out: { icon: 'hand', tone: 'mute', label: 'sin parte' },
-    driver: { icon: 'crown', tone: 'driver', label: 'driver' },
     sent: { icon: 'send', tone: 'ok', label: 'envió el resumen' },
     idle: { icon: 'check', tone: 'ok', label: 'libre' },
     working: { icon: 'zap', tone: 'accent', label: 'calculando' },
@@ -157,7 +156,7 @@
   // ------------------------------------------------------------ rules (mirror the server)
 
   const connectedCount = (s) => s.phones.filter((p) => p.status !== 'offline').length;
-  const liveWorkers = (s) => s.phones.filter((p) => p.registered && p.status !== 'offline' && p.status !== 'off' && p.status !== 'driver');
+  const liveWorkers = (s) => s.phones.filter((p) => p.registered && p.status !== 'offline' && p.status !== 'off');
 
   // Only forward, one step at a time; `reset` is the only way back.
   function canGo(s, id) {
@@ -387,7 +386,6 @@
 
   // What a tap on a tile does in this state, or null.
   function tileAction(s, p) {
-    if (s.phase === 'manager' && p.status !== 'offline' && p.status !== 'driver') return 'driver';
     if (canKill(s) && p.registered && p.parts > 0 && ['painting', 'sent', 'idle'].includes(p.status)) return 'kill';
     return null;
   }
@@ -403,13 +401,12 @@
       lobby: 'Compus conectadas', howto: 'Compus conectadas', solo: 'Drivers pintando solos', manager: 'Compus en el clúster',
     };
     const inCluster = s.phones.filter((p) => p.registered).length;
-    const count = s.phase === 'manager' ? `${inCluster} de ${connectedCount(s) - (s.driver ? 1 : 0)}`
+    const count = s.phase === 'manager' ? `${inCluster} de ${connectedCount(s)}`
       : ORDER.indexOf(s.phase) > ORDER.indexOf('manager') ? String(liveWorkers(s).length) : String(connectedCount(s));
     const title = `${titles[s.phase] || 'Workers'}: <span class="mono">${count}</span>`;
     if (compusTitle.innerHTML !== title) compusTitle.innerHTML = title;
     const hint = $('#compusHint');
-    const hintText = s.phase === 'manager' ? 'Tocá una compu para cambiar quién es el driver.'
-      : canKill(s) ? 'Tocá un worker para que se caiga.' : '';
+    const hintText = canKill(s) ? 'Tocá un worker para que se caiga.' : '';
     hint.textContent = hintText;
     hint.hidden = !hintText;
 
@@ -429,8 +426,7 @@
           if (!state) return;
           const cur = state.phones.find((q) => q.id === p.id);
           const action = cur && tileAction(state, cur);
-          if (action === 'driver') send('driver', { id: p.id });
-          else if (action === 'kill') send('kill', { id: p.id });
+          if (action === 'kill') send('kill', { id: p.id });
         });
         t = { el, sig: '', id: p.id };
         tiles.set(p.id, t);
@@ -451,7 +447,7 @@
         el.querySelector('.t-name').textContent = p.name;
         el.querySelector('.t-inh').textContent = extra;
         el.title = `Compu ${pad(p.id)} · ${p.name} · ${st.label}`;
-        const tap = action === 'driver' ? '. Tocar para hacerla driver' : action === 'kill' ? '. Tocar para que se caiga' : '';
+        const tap = action === 'kill' ? '. Tocar para que se caiga' : '';
         el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${tap}`);
       }
       if (grid.children[idx] !== t.el) grid.insertBefore(t.el, grid.children[idx] || null);
@@ -468,9 +464,6 @@
   function renderRoles(s) {
     const show = ORDER.indexOf(s.phase) >= ORDER.indexOf('manager') && s.phase !== 'end';
     $('#roles').hidden = !show;
-    if (!show) return;
-    const d = s.driver;
-    $('#roleDriver').textContent = d ? `${d.name}${d.connected ? '' : ' (sin conexión)'}` : 'El proyector';
   }
 
   function renderCard(s) {
@@ -638,7 +631,7 @@
         ? `La que más pintó: <strong>${esc(top.name)}</strong>, ${nf.format(top.done)} de ${nf.format(so.total)}.`
         : 'Nadie llegó a pintar.';
       $('#soloEstimate').innerHTML = `A este ritmo, un driver solo tardaría <strong>${fmtAbout(so.estimateMs)}</strong>.`;
-      $('#soloNext').textContent = top ? `${top.name} va a ser el driver del clúster.` : '';
+      $('#soloNext').textContent = 'Ahora el driver es quien presenta, y sus celulares lo van a ayudar.';
     }
     const leaders = so.leaders || [];
     $('#leaders').innerHTML = leaders.length
@@ -665,9 +658,6 @@
 
   function renderArch(s) {
     if (s.phase !== 'manager') return;
-    const d = s.driver;
-    $('#archDriver').textContent = d ? d.name : 'El proyector';
-    $('#archDriverNote').textContent = d ? 'Pintó más que nadie y tiene todos los datos' : 'Tiene todos los datos';
     const pool = s.phones.filter((p) => p.registered && p.status !== 'offline' && p.status !== 'off').map((p) => p.name);
     const count = $('#poolCount');
     if (count.textContent !== String(pool.length)) {
@@ -679,9 +669,7 @@
       }
     }
     $('#poolNames').textContent = pool.length ? names(pool) : 'Todavía ninguna. Conectá tu celular.';
-    $('#archFoot').innerHTML = d
-      ? `Cuando <strong>${esc(d.name)}</strong> pida compus desde su celular, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.`
-      : 'Cuando el driver pida compus, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.';
+    $('#archFoot').innerHTML = 'Cuando el driver pida compus, el cluster manager le presta todas estas: van a ser los <strong>workers</strong>.';
   }
 
   // ---------------- steps 3 to 5: plot side
@@ -799,7 +787,6 @@
 
   function renderEnd(s) {
     if (s.phase !== 'end') return;
-    $('#endDriverRow').textContent = s.driver ? `${s.driver.name}, que tenía todo el trabajo` : 'El proyector, que tenía todo el trabajo';
     const st = s.stats;
     const parts = [
       plural(st.parts, 'parte', 'partes'),

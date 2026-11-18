@@ -534,7 +534,6 @@ body[data-phase="combine"] .legend { display: none; }
 .role-k { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-2); }
 .role-v { font-size: 1.15rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compus-hint { font-size: 1rem; color: var(--fg-2); }
-.tile.tone-driver { --tone: var(--warn); border-width: 2px; }
 .tile.is-tappable:hover { border-color: var(--accent); background: var(--accent-soft); }
 .tile.is-kill:hover { border-color: var(--bad); background: var(--bad-soft); }
 

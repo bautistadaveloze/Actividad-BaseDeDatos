@@ -126,7 +126,7 @@ El objetivo de esta parte es que el público sienta el problema antes de ver cua
 - Después la cocina: el jefe de cocina reparte los pedidos (driver), el encargado dice qué cocineros están libres (cluster manager) y los cocineros cocinan (workers). Esta analogía la podés retomar en las siguientes diapositivas.
 - Aclará que los nombres son los de Spark, pero la idea está en cualquier clúster: cuando veamos Hadoop, YARN va a ser su cluster manager.
 
-**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de cluster manager, un alumno hace de driver desde su celular y el resto de los celulares son los workers.
+**Para entender vos:** en el modo standalone de Spark, al cluster manager se lo llama **master**. Por eso a veces se habla de "master y workers". El driver es otra cosa: es tu programa. En la actividad, el proyector hace de cluster manager, quien presenta hace de driver y todos los celulares son los workers.
 
 **Pasaje:** "Con un jefe, un encargado y cocineros, repartir el trabajo parece fácil. Pero no lo es".
 
@@ -655,10 +655,10 @@ Las diapositivas del recorrido se explican con dibujos, no con texto: la compu a
 - Contá los pasos rápido, sin detalle (si la diapositiva todavía dice "Seis pasos", usá esta lista):
   1. Se unen con el celular.
   2. Cómo se juega: el proyector muestra un ejemplo y cada uno practica con 3 puntos que no cuentan. El reloj arranca cuando vos lo decidís.
-  3. Cada uno es **el driver**, solo con todos los puntos y 20 segundos. Quien pinta más queda como driver.
-  4. Aparece **el cluster manager** (el proyector) y le dice a cada celular libre que va a ser un worker.
+  3. Cada uno es **el driver**, solo con todos los puntos y 20 segundos. Nadie llega.
+  4. Desde acá **el driver sos vos**, desde el proyector. Aparece **el cluster manager** y le dice a cada celular que va a ser un worker.
   5. Los celulares son **workers**: cada uno pinta su parte de 6 puntos y le manda un resumen al driver.
-  6. El driver junta los resúmenes, mueve los centros y repite hasta que no cambian.
+  6. Vos, como driver, juntás los resúmenes desde el proyector: se mueven los centros y se repite hasta que no cambian.
   7. Se cae una compu y otra hace su parte: no se pierde nada.
   8. Cierre: qué fue cada cosa.
 - Es el mismo orden del recorrido (26–36): el driver, el driver pide recursos, los workers, las particiones, las tareas y los resultados que vuelven.

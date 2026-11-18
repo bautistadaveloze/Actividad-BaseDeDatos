@@ -2,7 +2,8 @@
 
 // Phone screen: one view per moment of the class, one action per view.
 // The phone first plays the driver alone, then the cluster manager signs it
-// up and it works as a worker (or, for one person, as the driver).
+// up and it works as a worker. From then on the driver is whoever presents,
+// from the projector: no phone ever plays the driver of the cluster.
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const NAMES = ['Violeta', 'Celeste', 'Rosa'];
@@ -55,7 +56,6 @@
   let celebrating = false;
   let seenFailN = null;
   const MEDALS = {
-    driver: ['crown', 'Fuiste el driver'],
     top: ['trophy', 'Pintaste más que nadie solo'],
     heir: ['heart-handshake', 'Hiciste el trabajo de otra compu'],
     fallen: ['power-off', 'Se cayó tu compu y no se perdió nada'],
@@ -176,8 +176,6 @@
   // The part to paint now: own part first, then the inherited ones.
   const currentPart = () => (state.manual ? state.parts.find((part) => !isSent(part)) : null) || null;
   const correctOf = (p) => KM.nearest(p, state.centers);
-  const driverName = () => (state.driver ? state.driver.name : 'el driver');
-  const toDriver = () => (state.driver ? esc(state.driver.name) : 'al driver');
 
   // ------------------------------------------------------------ automatic task (step 5)
 
@@ -204,7 +202,7 @@
     const { me } = state;
     $('#barTitle').textContent = `Compu ${pad(me.id)} · ${me.name}`;
     const role = $('#barRole');
-    const roleText = me.role === 'driver' ? 'Driver' : me.role === 'worker' ? 'Worker' : state.phase === 'solo' ? 'Driver' : '';
+    const roleText = me.role === 'worker' ? 'Worker' : state.phase === 'solo' ? 'Driver' : '';
     role.textContent = roleText;
     role.hidden = !roleText;
     role.dataset.role = me.role;
@@ -246,8 +244,6 @@
     } else if (lastFail.me === 'heir') {
       vibrate([60, 40, 60]);
       banner('ok', 'heart-handshake', `Te llegó trabajo extra: se cayó la compu de ${who} y su parte ahora la hacés vos.`, 8000);
-    } else if (me.role === 'driver') {
-      vibrate([60, 40, 60]); // the inbox view says what happened, in place
     } else if (!me.off) {
       const lead = lastFail.cause === 'spin' ? '¡Te salvaste! ' : '';
       banner('ok', 'shield-check', `${lead}Se cayó la compu de ${who}. Su parte la hace ${heir}.`, 6000);
@@ -264,11 +260,6 @@
     if (phase === 'lobby') return 'lobby';
     if (phase === 'howto') return practiceDone >= PRACTICE.length ? 'howtoReady' : 'howto';
     if (phase === 'solo') return soloFinished() ? 'soloOver' : 'solo';
-    if (me.role === 'driver') {
-      if (phase === 'manager') return 'driverAsk';
-      if (phase === 'combine') return 'driverCombine';
-      return state.manual ? 'driverInbox' : 'driverDone';
-    }
     // The cluster manager signs every phone up by itself; this lasts an instant.
     if (!me.registered) return 'connecting';
     if (phase === 'manager') return 'assigned';
@@ -339,10 +330,6 @@
 
   function countsHtml(counts) {
     return `<div class="counts">${counts.map((c, j) => `<span class="count">${swatch(j)}<b>${NAMES[j]}</b><span class="mono">${c}</span></span>`).join('')}</div>`;
-  }
-
-  function miniCounts(counts) {
-    return `<span class="mini-counts">${counts.map((c, j) => `<span>${swatch(j)}<span class="mono">${c}</span></span>`).join('')}</span>`;
   }
 
   function compareHtml() {
@@ -445,7 +432,7 @@
       const dur = (state.solo && state.solo.durationMs) || 20000;
       const myEstimate = done >= 3 ? Math.round((dur / done) * total) : null;
       const top = state.me.top
-        ? `<div class="podium">${icon('crown')}<span>¡Pintaste más que nadie! Vas a ser el driver del clúster.</span></div>`
+        ? `<div class="podium">${icon('trophy')}<span>¡Pintaste más que nadie! Y aun así, solo no llegaste.</span></div>`
         : state.solo && state.solo.over && state.solo.top
           ? `<p class="note">${icon('trophy')}<span>La que más pintó fue la compu de <b>${esc(state.solo.top)}</b>.</span></p>` : '';
       return `
@@ -462,32 +449,18 @@
     // ---------------- step 3: the cluster manager
 
     assigned() {
-      const d = state.driver ? `<b>${esc(state.driver.name)}</b> es el driver` : 'El driver';
       return `
         <div class="stack">
           ${eyebrow('Apareció el cluster manager', 'server')}
           <h1>Vas a ser un worker</h1>
-          <p class="lead">${d} y solo no llega. El cluster manager vio que tu compu está libre y te anotó para ayudarlo.</p>
+          <p class="lead">Ahora el driver es quien presenta y solo no llega. El cluster manager vio que tu compu está libre y te anotó para ayudarlo.</p>
         </div>
         <div class="arch-mini" aria-hidden="true">
           <span class="node">${icon('crown')}Driver</span><span class="arr">${icon('arrow-right')}</span>
           <span class="node">${icon('server')}Cluster manager</span><span class="arr">${icon('arrow-right')}</span>
           <span class="node hl">${icon('smartphone')}Vos: worker</span>
         </div>
-        ${waiting(`Esperá: ${esc(driverName())} le va a pedir compus al cluster manager.`)}`;
-    },
-
-    driverAsk() {
-      const n = state.workers;
-      return `
-        <div class="stack">
-          ${eyebrow(state.me.top ? 'Pintaste más que nadie' : 'Te eligieron', 'crown')}
-          <h1>Sos el driver</h1>
-          <p class="lead">Tenés todos los datos y solo no llegás. Pedile compus al cluster manager.</p>
-        </div>
-        <div class="big-count"><b class="mono">${n}</b><span>${n === 1 ? 'compu libre anotada' : 'compus libres anotadas'} como ${n === 1 ? 'worker' : 'workers'}</span></div>
-        ${dock(`${n ? '' : '<p class="dock-note">Esperá a que se conecten compus.</p>'}
-          <button class="btn btn-primary btn-lg btn-block cta" type="button" data-ask ${n ? '' : 'disabled'}>${icon('server')}Pedir compus al cluster manager</button>`)}`;
+        ${waiting('Esperá: el driver le va a pedir compus al cluster manager.')}`;
     },
 
     // ---------------- steps 4 and 6: a worker paints its part
@@ -519,10 +492,10 @@
         <div class="stack">
           <h1>${part.from ? `Pintaste la parte de ${esc(part.from)}` : 'Pintaste tu parte'}</h1>
           ${countsHtml(counts)}
-          <p class="lead">Este es tu <b>resumen</b>: cuántos puntos hay de cada color. Es lo único que viaja ${state.driver ? `a ${esc(state.driver.name)}` : 'al driver'}, no tus puntos.</p>
+          <p class="lead">Este es tu <b>resumen</b>: cuántos puntos hay de cada color. Es lo único que viaja al driver, no tus puntos.</p>
         </div>
         ${plotSvg({ pts: part.points, labelOf: (i, p) => correctOf(p) })}
-        ${dock(`<button class="btn btn-primary btn-lg btn-block cta" type="button" data-send="${part.id}">${icon('send')}Enviar resumen ${state.driver ? `a ${esc(state.driver.name)}` : 'al driver'}</button>`)}`;
+        ${dock(`<button class="btn btn-primary btn-lg btn-block cta" type="button" data-send="${part.id}">${icon('send')}Enviar resumen al driver</button>`)}`;
     },
 
     sent() {
@@ -530,7 +503,7 @@
         <div class="result">
           <div class="result-icon ok">${icon('check')}</div>
           <h1>Resumen enviado</h1>
-          <p class="lead">${esc(driverName())} lo junta con los resúmenes de las demás compus. Mirá el proyector.</p>
+          <p class="lead">El driver lo junta con los resúmenes de las demás compus. Mirá el proyector.</p>
         </div>
         ${labeledPlot(allMyPoints())}`;
     },
@@ -546,53 +519,6 @@
         ${waiting('Mirá el proyector.')}`;
     },
 
-    // ---------------- step 4 and 6: the driver collects summaries
-
-    driverInbox() {
-      const { done, total } = state.progress;
-      const all = total > 0 && done >= total;
-      const round = state.manual.round > 1 ? ` · vuelta ${state.manual.round}` : '';
-      const items = (state.inbox || []).slice().reverse().map((e) => `<li>
-          <span class="in-name">${esc(e.by)}${e.from !== e.by ? `<small>hizo la parte de ${esc(e.from)}</small>` : ''}</span>
-          ${miniCounts(e.counts)}</li>`).join('');
-      return `
-        <div class="stack">
-          ${eyebrow(`Sos el driver${round}`, 'crown')}
-          <h1>Llegaron ${done} de ${total} resúmenes</h1>
-          <div class="meter" aria-hidden="true"><i style="width:${Math.round((100 * done) / Math.max(1, total))}%"></i></div>
-        </div>
-        ${state.lastFail ? `<p class="note warn">${icon('power-off')}<span>Se cayó la compu de <b>${esc(state.lastFail.victim)}</b>. El cluster manager le pasó su parte a <b>${esc(state.lastFail.heir)}</b>.</span></p>` : ''}
-        ${items ? `<ul class="inbox">${items}</ul>` : waiting('Repartiste los datos. Esperá los resúmenes de los workers.')}
-        ${dock(`${all ? '' : `<p class="dock-note">Faltan ${plural(total - done, 'resumen', 'resúmenes')}.</p>`}
-          <button class="btn btn-primary btn-lg btn-block cta" type="button" data-join ${all ? '' : 'disabled'}>${icon('merge')}Juntar resúmenes</button>`)}`;
-    },
-
-    driverCombine() {
-      const t = state.totals || [0, 0, 0];
-      let action;
-      if (state.converged) action = '';
-      else if (state.running) action = `<button class="btn btn-lg btn-block cta" type="button" data-run="0">${icon('pause')}Pausar</button>`;
-      else action = `<button class="btn btn-primary btn-lg btn-block cta" type="button" data-run="1">${icon('repeat')}Repetir solo hasta que no cambie</button>`;
-      const head = state.converged
-        ? `<div class="result${celebrating ? ' party' : ''}"><div class="result-icon ok">${icon(celebrating ? 'party-popper' : 'check')}</div><h1>Terminamos</h1><p class="lead">Los centros ya no se mueven: el modelo está entrenado.</p></div>`
-        : `<div class="stack">${eyebrow('Sos el driver', 'crown')}<h1>${state.round > 1 ? `Vuelta ${state.round}` : 'Juntaste los resúmenes'}</h1>
-            <p class="lead">${state.round > 1 ? 'Las compus calculan solas y vos movés los centros.' : 'Moviste cada centro al medio de su grupo.'}</p></div>`;
-      return `${head}${countsHtml(t)}${state.round <= 1 ? compareHtml() : ''}${action ? dock(action) : ''}`;
-    },
-
-    driverDone() {
-      const j = state.join;
-      const f = state.lastFail;
-      return `
-        <div class="result">
-          <div class="result-icon ok">${icon('shield-check')}</div>
-          <h1>${j ? `Juntaste las ${j.parts} partes` : 'Juntaste todo'}</h1>
-          <p class="lead">${j ? `Las hicieron ${plural(j.workers, 'compu', 'compus')}.` : ''} ${f ? `Se cayó la compu de ${esc(f.victim)} y no se perdió nada.` : ''}</p>
-        </div>
-        ${countsHtml(state.totals || [0, 0, 0])}
-        ${waiting('Mirá el proyector.')}`;
-    },
-
     // ---------------- step 5: the driver joined; then automatic rounds
 
     combine() {
@@ -605,7 +531,7 @@
       } else if (taskUi && taskUi.status === 'done') {
         head = `<div class="result"><div class="result-icon ok">${icon('send')}</div><h1>Vuelta ${taskUi.round} · Resumen enviado</h1></div>`;
       } else {
-        head = `<div class="result"><h1>${esc(driverName())} juntó los resúmenes</h1>
+        head = `<div class="result"><h1>El driver juntó los resúmenes</h1>
           <p class="lead">Movió cada centro al medio de su grupo. Mirá el proyector.</p>${compareHtml()}</div>`;
       }
       return `${head}${labeledPlot(allMyPoints())}`;
@@ -617,7 +543,7 @@
         <div class="result">
           <div class="result-icon ok">${icon('shield-check')}</div>
           <h1>Llegaron todas las partes</h1>
-          <p class="lead">${f ? `Se cayó la compu de ${esc(f.victim)} y no se perdió nada: su parte la ${f.me === 'heir' ? 'hiciste vos' : `hizo ${esc(f.heir)}`}.` : `${esc(driverName())} juntó todo otra vez.`}</p>
+          <p class="lead">${f ? `Se cayó la compu de ${esc(f.victim)} y no se perdió nada: su parte la ${f.me === 'heir' ? 'hiciste vos' : `hizo ${esc(f.heir)}`}.` : 'El driver juntó todo otra vez.'}</p>
         </div>
         ${labeledPlot(allMyPoints())}`;
     },
@@ -738,15 +664,7 @@
     if (pick) { onPick(pick); return; }
     const btn = e.target.closest('button');
     if (!btn || btn.disabled || !state) return;
-    if (btn.hasAttribute('data-ask')) {
-      btn.disabled = true;
-      emit('driver:ask');
-    } else if (btn.hasAttribute('data-join')) {
-      btn.disabled = true;
-      emit('driver:join');
-    } else if (btn.hasAttribute('data-run')) {
-      emit('driver:run', { on: btn.dataset.run === '1' });
-    } else if (btn.hasAttribute('data-send')) {
+    if (btn.hasAttribute('data-send')) {
       const part = state.parts.find((pt) => pt.id === Number(btn.dataset.send));
       if (!part || isSent(part)) return;
       sentLocal.add(partKey(part));

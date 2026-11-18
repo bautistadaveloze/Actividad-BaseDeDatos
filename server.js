@@ -85,7 +85,6 @@ const S = {
   phones: new Map(), // token -> phone
   byId: new Map(), // id -> phone
   nextId: 1,
-  driverId: null, // the phone playing the driver from step 3 on (null = the projector)
   solo: null, // { seed, total, startedAt, endsAt, endedAt, over, timer }
   parts: [],
   points: [],
@@ -115,9 +114,8 @@ const S = {
 const phoneList = () => [...S.byId.values()];
 const byId = (a, b) => a.id - b.id;
 const nameOf = (id) => (S.byId.get(id) || { name: '?' }).name;
-const isDriver = (p) => p.id === S.driverId;
 const isLive = (p) => p.connected && !p.off;
-const liveWorkers = () => phoneList().filter((p) => isLive(p) && p.registered && !isDriver(p));
+const liveWorkers = () => phoneList().filter((p) => isLive(p) && p.registered);
 const partsOf = (p) => S.parts.filter((part) => part.owner === p.id);
 const hasUnsent = (p) => !!S.manual && partsOf(p).some((part) => !part.sent);
 
@@ -132,7 +130,6 @@ function newFacts() {
 function statusOf(p) {
   if (p.off) return 'off';
   if (!p.connected) return 'offline';
-  if (isDriver(p)) return 'driver';
   switch (S.phase) {
     case 'lobby':
     case 'howto': return 'waiting';
@@ -203,11 +200,11 @@ function endSolo() {
 }
 
 // Who painted the most alone; ties go to whoever got there first.
-function soloRanking(list = phoneList()) {
-  return list.filter((p) => p.solo.done > 0)
+function soloRanking() {
+  return phoneList().filter((p) => p.solo.done > 0)
     .sort((a, b) => (b.solo.done - a.solo.done) || (a.solo.at - b.solo.at) || (a.id - b.id));
 }
-const soloTop = (list) => soloRanking(list)[0] || null;
+const soloTop = () => soloRanking()[0] || null;
 
 // Median time per point among those who painted at least 3: what one
 // person alone needs, to estimate how long the whole job would take.
@@ -252,36 +249,17 @@ function soloInfo() {
   };
 }
 
-// ---------------------------------------------------------------- driver and cluster manager (step 3)
+// ---------------------------------------------------------------- cluster manager (step 3)
 
-// The one who painted the most alone becomes the driver. With a single
-// phone there is nobody to help it: the projector plays the driver instead.
-function chooseDriver() {
-  const connected = phoneList().filter((p) => p.connected);
-  S.driverId = null;
-  if (connected.length < 2) return;
-  const pick = soloTop(connected) || connected[Math.floor(Math.random() * connected.length)];
-  S.driverId = pick.id;
-  pick.registered = false;
-}
-
-function setDriver(id) {
-  if (S.phase !== 'manager') return;
-  const p = S.byId.get(id);
-  if (!p || !p.connected || isDriver(p)) return;
-  const old = S.byId.get(S.driverId);
-  S.driverId = p.id;
-  p.registered = false;
-  if (old) enlist(old); // the old driver is free now: it becomes a worker
-  broadcast();
-}
+// From step 3 on the driver is the projector: whoever presents asks for
+// computers and joins the summaries there. No phone ever plays the driver.
 
 // The cluster manager signs up every free phone by itself: nobody has to
 // tap anything, each phone is just told "you are a worker". Once the data
 // exists, a phone that arrives late gets its part right away.
 function enlist(p) {
   if (!['manager', 'work', 'combine', 'fail'].includes(S.phase)) return;
-  if (isDriver(p) || p.off || !p.connected) return;
+  if (p.off || !p.connected) return;
   p.registered = true;
   if (S.phase !== 'manager' && !p.hadPart) newPart(p);
 }
@@ -415,7 +393,6 @@ function setPhase(phase) {
       break;
     case 'manager':
       endSolo();
-      chooseDriver();
       S.phase = phase; // enlist() only signs up phones once the manager is here
       for (const p of phoneList()) enlist(p);
       break;
@@ -542,7 +519,7 @@ function stopRounds() {
 // Turns `victim` off and hands every part it had to the least loaded live
 // worker. `cause`: 'spin' | 'kill' | 'lost'. False if it was not possible.
 function knockOut(victim, cause, n = S.failCount + 1) {
-  if (victim.off || isDriver(victim)) return false;
+  if (victim.off) return false;
   const mine = partsOf(victim);
   if (!mine.length) return false;
   const heirs = liveWorkers().filter((p) => p !== victim);
@@ -665,7 +642,6 @@ function reset() {
   }
   Object.assign(S, {
     phase: 'lobby',
-    driverId: null,
     solo: null,
     parts: [],
     points: [],
@@ -694,16 +670,15 @@ function reset() {
 
 // ---------------------------------------------------------------- snapshots
 
-const MEDAL_ORDER = ['driver', 'top', 'heir', 'fallen', 'survivor', 'worker'];
+const MEDAL_ORDER = ['top', 'heir', 'fallen', 'survivor', 'worker'];
 
 function medalsOf(p) {
   const has = {
-    driver: isDriver(p),
     top: p.facts.top,
     heir: p.facts.heir,
     fallen: p.facts.fallen,
     survivor: p.facts.survivor,
-    worker: p.registered && !isDriver(p),
+    worker: p.registered,
   };
   const medals = MEDAL_ORDER.filter((m) => has[m]);
   return medals.length ? medals : ['cluster'];
@@ -733,12 +708,10 @@ function projectorSnapshot() {
     const part = S.parts[pt.part];
     if (part.owner !== part.home) inherited.set(part.owner, (inherited.get(part.owner) || 0) + 1);
   }
-  const driver = S.driverId !== null ? S.byId.get(S.driverId) : null;
   return {
     phase: S.phase,
     publicUrl: PUBLIC_URL,
     soloMs: SOLO_MS,
-    driver: driver ? { id: driver.id, name: driver.name, connected: driver.connected } : null,
     phones: phoneList().map((p) => ({
       id: p.id,
       name: p.name,
@@ -787,15 +760,14 @@ function projectorSnapshot() {
 function phoneSnapshot(p, byPart) {
   // Own part first, then inherited ones in the order they arrived.
   const mine = partsOf(p).sort((a, b) => ((a.home === p.id ? 0 : 1) - (b.home === p.id ? 0 : 1)) || (a.id - b.id));
-  const driver = S.driverId !== null ? S.byId.get(S.driverId) : null;
   const solo = S.phase === 'solo' && S.solo ? soloInfo() : null;
-  const snap = {
+  return {
     phase: S.phase,
     soloMs: SOLO_MS,
     me: {
       id: p.id,
       name: p.name,
-      role: isDriver(p) ? 'driver' : p.registered ? 'worker' : 'none',
+      role: p.registered ? 'worker' : 'none',
       registered: p.registered,
       off: p.off,
       offCause: p.offCause,
@@ -828,7 +800,6 @@ function phoneSnapshot(p, byPart) {
       sent: part.sent,
       points: (byPart.get(part.id) || []).map((pt) => ({ x: pt.x, y: pt.y, label: pt.label })),
     })),
-    driver: driver ? { name: driver.name } : null,
     workers: liveWorkers().length,
     join: joinFacts(),
     spin: S.spin && S.spin.candidates.includes(p.id) ? { n: S.spin.n, ms: S.spin.ms } : null,
@@ -842,14 +813,6 @@ function phoneSnapshot(p, byPart) {
     },
     stats: { workers: liveWorkers().length, points: S.points.length, parts: S.parts.length },
   };
-  if (isDriver(p)) {
-    snap.inbox = inboxView();
-    snap.progress = S.manual
-      ? { done: S.parts.filter((part) => part.sent).length, total: S.parts.length }
-      : { ...S.progress };
-    snap.totals = totals();
-  }
-  return snap;
 }
 
 // ---------------------------------------------------------------- sockets
@@ -882,7 +845,6 @@ function attachProjector(socket, auth) {
   socket.emit('state', projectorSnapshot());
   const on = (event, fn) => guarded(socket, event, fn);
   on('phase', ({ phase }) => { if (typeof phase === 'string') setPhase(phase); });
-  on('driver', ({ id }) => { if (Number.isInteger(id)) setDriver(id); });
   on('join', () => joinNow());
   on('round', () => startRound());
   on('run', ({ on: value }) => { if (typeof value === 'boolean') setRunning(value); });
@@ -928,9 +890,6 @@ function attachPhone(socket, auth) {
   on('solo:progress', (payload) => soloProgress(p, payload));
   on('part:submit', (payload) => partSubmit(p, payload));
   on('task:result', (payload) => taskResult(p, payload));
-  on('driver:ask', () => { if (isDriver(p) && S.phase === 'manager') setPhase('work'); });
-  on('driver:join', () => { if (isDriver(p)) joinNow(); });
-  on('driver:run', ({ on: value }) => { if (isDriver(p) && typeof value === 'boolean') setRunning(value); });
   socket.on('disconnect', () => {
     if (p.socket !== socket) return;
     p.connected = false;

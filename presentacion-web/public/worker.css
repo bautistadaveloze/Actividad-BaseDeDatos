@@ -309,7 +309,6 @@ body[data-view="sent"] .plot { width: min(100%, calc(100dvh - 17rem)); }
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
-.role-pill[data-role="driver"] { background: var(--warn); border-color: var(--warn); color: var(--bg); }
 .role-pill[hidden] { display: none; }
 
 .eyebrow { display: flex; align-items: center; gap: 0.5rem; color: var(--accent); font-weight: 600; font-size: 0.9375rem; }
@@ -353,37 +352,15 @@ body[data-view="solo"] .plot .pt { stroke-width: 0.35; }
 .podium .icon { width: 1.5rem; height: 1.5rem; }
 @keyframes podium-in { from { opacity: 0; transform: scale(0.85); } }
 
-/* step 3: lend the phone, ask for phones */
+/* step 3: the cluster manager signs the phone up */
 .arch-mini { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.375rem; margin-top: 1rem; font-size: 0.875rem; font-weight: 600; }
 .arch-mini .node { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 0.625rem; border-radius: var(--radius); border: var(--stroke) solid var(--line-strong); background: var(--bg-raised); }
 .arch-mini .node.hl { border-color: var(--accent); background: var(--accent-soft); }
 .arch-mini .arr { color: var(--fg-3); display: inline-flex; }
-.big-count { display: grid; justify-items: center; gap: 0.25rem; padding: 1.25rem 1rem; border-radius: var(--radius-lg); background: var(--bg-sunken); border: var(--stroke) solid var(--line); text-align: center; }
-.big-count b { font-size: 4.5rem; line-height: 1; letter-spacing: -0.04em; }
-.big-count span { color: var(--fg-2); }
-.dock-note { margin-bottom: 0.5rem; text-align: center; font-size: 0.875rem; color: var(--fg-2); }
 
 /* steps 4 and 6: an inherited part */
 .inherit-chip { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem; border-radius: var(--radius); background: var(--warn-soft); border: var(--stroke) solid var(--warn); font-size: 0.9375rem; }
 .inherit-chip .icon { color: var(--warn); flex: none; }
-
-/* the driver's inbox */
-.inbox { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.375rem; }
-.inbox li {
-  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius);
-  background: var(--bg-raised);
-  border: var(--stroke) solid var(--line);
-  animation: inbox-in 360ms var(--ease-out);
-}
-.inbox li:not(:first-child) { animation: none; }
-.in-name { display: grid; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
-.in-name small { font-weight: 500; font-size: 0.8125rem; color: var(--warn); }
-.mini-counts { display: inline-flex; gap: 0.625rem; flex: none; font-size: 0.9375rem; }
-.mini-counts > span { display: inline-flex; align-items: center; gap: 0.25rem; }
-.mini-counts .shape { width: 0.8125rem; height: 0.8125rem; }
-@keyframes inbox-in { from { opacity: 0; transform: translateY(-6px); background: var(--accent-soft); } }
 
 /* step 5: cluster vs one driver alone */
 .compare { display: grid; grid-template-columns: auto 1fr; gap: 0.625rem; padding: 0.625rem 0.875rem; border-radius: var(--radius); background: var(--accent-soft); font-size: 0.9375rem; }

@@ -492,23 +492,28 @@ Las diapositivas del recorrido se explican con dibujos, no con texto: la compu a
 **Cómo explicarlo:** todo con el dibujo y el ejemplo de los logs. Cada figurita es un error, y la forma dice de qué tipo es: triángulo, círculo o cuadrado. Cada tipo tiene el color de la compu que lo va a juntar.
 - Al llegar se ve el **stage 1**: los mismos tres workers, cada uno con errores de los tres tipos mezclados. Leer, quedarse con los errores y sacar el tipo se hace línea por línea, así que cada worker lo hace solo, con lo suyo. **Stage:** una tanda de pasos que cada partición puede hacer sola, sin pedirle datos a otra máquina.
 - **Task:** señalá la pantalla de cada compu (T1 T2, T3 T4, T5 T6). Una task es un stage aplicado a una partición, lo que el driver le manda a un executor. Seis particiones, seis tasks.
-- Preguntá: "para contar los triángulos, ¿qué problema hay?". Están desparramados en las tres compus: las particiones se arman por posición en el archivo, no por contenido.
-- Primer clic, **shuffle:** cada pieza viaja a la compu de su color. Todos le mandan a todos, por eso las líneas se cruzan. Analogía: el correo, donde todas las cartas para Córdoba terminan en el mismo camión. Es el mismo shuffle de MapReduce (diapositiva 11) y es lo más caro, porque usa la red y el disco. Por eso Spark corta ahí: el stage 2 no arranca hasta que termina el stage 1.
-- Segundo clic, **stage 2:** cada compu quedó con un solo tipo y lo cuenta sola: 7 triángulos, 5 círculos, 4 cuadrados. Tres particiones, tres tasks (T7, T8, T9).
-- Tercer clic, **job:** la llave de abajo junta todo. Un job es todo el trabajo que dispara una acción, en este caso Contar. Una acción, un job: si el programa tiene tres `count`, son tres jobs.
+- Primer clic, **fin del stage 1:** las figuritas de cada compu se ordenan en sobres, uno por tipo. Cada worker deja sus sobres en su propio disco y le avisa al driver: "terminé, mis sobres están acá". El driver no recibe los datos: solo anota dónde quedó cada sobre.
+- Preguntá: "para contar los triángulos, ¿qué problema hay?". Hay un sobre de triángulos en cada una de las tres compus: las particiones se arman por posición en el archivo, no por contenido.
+- Segundo clic, **el driver arma el stage 2:** aparece el driver en el medio y manda tres tasks nuevas, una por tipo. T7: "vos juntás los triángulos"; T8, los círculos; T9, los cuadrados. Al lado de cada compu queda la silueta punteada del tipo que le toca. Cada task es un mensaje chico: qué juntar y en qué compus están los sobres. Ojo con el orden: primero llegan las tasks y después se mueven los datos.
+- Tercer clic, **shuffle:** el driver se va de la escena porque ya no participa. Cada task va a buscar sus sobres a todas las compus; todos le piden a todos, por eso las líneas se cruzan. Los datos viajan de worker a worker y nunca pasan por el driver. Analogía: el escrutinio de una elección. Cada mesa armó un sobre por candidato, y la persona que suma a García pasa por todas las mesas juntando los sobres de García. Es el mismo shuffle de MapReduce (diapositiva 11) y es lo más caro, porque usa la red y el disco. Por eso Spark corta ahí: el stage 2 no arranca hasta que termina el stage 1.
+- Cuarto clic, **cada task cuenta su tipo:** 7 triángulos, 5 círculos, 4 cuadrados. Al driver vuelve solo el número. Tres particiones, tres tasks.
+- Quinto clic, **job:** la llave de abajo junta todo. Un job es todo el trabajo que dispara una acción, en este caso Contar. Una acción, un job: si el programa tiene tres `count`, son tres jobs.
 - Resumí: una acción dispara un job, el job se corta en stages en cada shuffle, y cada stage se reparte en una task por partición.
 
 **Para entender vos:**
 - **DAG:** el driver arma el job a partir del plan del paso 5, que por dentro es un DAG: un grafo de pasos con flechas que siempre van para adelante. No hace falta nombrarlo si no preguntan.
 - **Dónde corta un stage:** en las *dependencias anchas*, cuando una partición nueva necesita datos de muchas particiones anteriores (agrupar, ordenar, unir tablas).
 - **Dónde no corta:** en las *dependencias angostas*, como filtrar o transformar fila por fila, que quedan en el mismo stage.
-- **Antes del shuffle** cada máquina suele contar lo suyo y manda solo el conteo parcial ("timeout: 40"), no cada línea. Es la misma idea que los resúmenes de la actividad. El dibujo muestra viajar las piezas para que se entienda el movimiento.
+- **Qué hay en cada sobre:** en un conteo, cada máquina suele contar lo suyo antes de guardar, así que el sobre lleva el conteo parcial ("timeout: 40") y no cada línea. Es la misma idea que los resúmenes de la actividad. El dibujo muestra las figuritas para que se vea qué se mueve.
+- **Quién mueve los datos:** en el shuffle de Spark, las tasks del stage 2 piden los sobres (*shuffle read*). Las del stage 1 solo los dejan escritos en su disco (*shuffle write*). El driver guarda el registro de qué sobre está en qué compu y se lo pasa a cada task.
+- **A qué compu va cada task del stage 2:** a cualquier executor libre. No tiene la ventaja de la localidad del paso 7, porque sus datos están repartidos en todas las compus.
 
 ### 33 · Paso 7 · El driver manda las tareas
 
 **Idea:** cada tarea va al executor que ya tiene su partición. Lo que viaja por la red es la tarea, que es chiquita, no los datos.
 
 **Cómo explicarlo:**
+- Aclaralo al empezar: "volvamos al stage 1 y miremos de cerca adónde va cada task".
 - T1 y T2 van al worker 1 porque ahí están P1 y P2.
 - "Es llevarle la receta al cocinero que ya tiene los ingredientes en su heladera."
 - Señalá que el cluster manager quedó en gris: ya prestó las máquinas y no participa más. Desde acá el driver habla directo con los executors.

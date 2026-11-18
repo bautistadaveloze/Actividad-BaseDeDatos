@@ -223,7 +223,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target instanceof HTMLInputElement) return;
-    if (e.key === 'Escape') { toggleQr(false); askReset(false); return; }
+    if (e.key === 'Escape') { toggleQr(false); askReset(false); if (removeMode) setRemoveMode(false); return; }
     if (!confirmBox.hidden) return; // the dialog owns the keyboard while open
     const k = e.key.toLowerCase();
     if (e.key === 'ArrowRight') goNext();
@@ -231,6 +231,7 @@
     else if (k === 's') toggleRun();
     else if (k === 'j') doJoin();
     else if (k === 'k') doSpin();
+    else if (k === 'x') setRemoveMode(!removeMode);
     else if (k === 'q') toggleQr();
     else if (k === 't') toggleTheme();
     else if (k === 'f') toggleFullscreen();
@@ -384,8 +385,21 @@
   }
   const applyAllFx = () => tiles.forEach(applyTileFx);
 
+  // "Sacar" mode: a tap takes the phone out of the class (it left, went idle
+  // or does not want to play). It stays on until turned off, to take out several.
+  let removeMode = false;
+  const removeBtn = $('#removeBtn');
+  function setRemoveMode(on) {
+    removeMode = on;
+    removeBtn.setAttribute('aria-pressed', String(on));
+    $('#removeLabel').textContent = on ? 'Listo' : 'Sacar';
+    if (state) renderCompus(state);
+  }
+  removeBtn.addEventListener('click', () => setRemoveMode(!removeMode));
+
   // What a tap on a tile does in this state, or null.
   function tileAction(s, p) {
+    if (removeMode) return 'remove';
     if (canKill(s) && p.registered && p.parts > 0 && ['painting', 'sent', 'idle'].includes(p.status)) return 'kill';
     return null;
   }
@@ -406,7 +420,8 @@
     const title = `${titles[s.phase] || 'Workers'}: <span class="mono">${count}</span>`;
     if (compusTitle.innerHTML !== title) compusTitle.innerHTML = title;
     const hint = $('#compusHint');
-    const hintText = canKill(s) ? 'Tocá un worker para que se caiga.' : '';
+    const hintText = removeMode ? 'Tocá una compu para sacarla. Si quiere volver, entra de nuevo desde el celular.'
+      : canKill(s) ? 'Tocá un worker para que se caiga.' : '';
     hint.textContent = hintText;
     hint.hidden = !hintText;
 
@@ -426,7 +441,8 @@
           if (!state) return;
           const cur = state.phones.find((q) => q.id === p.id);
           const action = cur && tileAction(state, cur);
-          if (action === 'kill') send('kill', { id: p.id });
+          if (action === 'remove') send('remove', { id: p.id });
+          else if (action === 'kill') send('kill', { id: p.id });
         });
         t = { el, sig: '', id: p.id };
         tiles.set(p.id, t);
@@ -443,11 +459,12 @@
         el.disabled = !action;
         el.classList.toggle('is-tappable', !!action);
         el.classList.toggle('is-kill', action === 'kill');
+        el.classList.toggle('is-remove', action === 'remove');
         el.querySelector('.t-ico').innerHTML = icon(st.icon);
         el.querySelector('.t-name').textContent = p.name;
         el.querySelector('.t-inh').textContent = extra;
         el.title = `Compu ${pad(p.id)} · ${p.name} · ${st.label}`;
-        const tap = action === 'kill' ? '. Tocar para que se caiga' : '';
+        const tap = action === 'remove' ? '. Tocar para sacarla' : action === 'kill' ? '. Tocar para que se caiga' : '';
         el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${tap}`);
       }
       if (grid.children[idx] !== t.el) grid.insertBefore(t.el, grid.children[idx] || null);

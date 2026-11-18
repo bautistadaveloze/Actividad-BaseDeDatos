@@ -32,6 +32,7 @@
   if (!token) { token = newToken(); safe.set(tokenArea, 'worker-token', token); }
   let name = urlName || safe.get('localStorage', 'worker-name') || '';
   let joined = tabMode || safe.get('localStorage', 'worker-joined') === '1';
+  let kicked = false; // the projector took this phone out
 
   const screen = $('#screen');
   let socket = null;
@@ -80,12 +81,25 @@
     socket.on('task', onTask);
     socket.on('join:error', (msg) => {
       banner('bad', 'circle-alert', esc(msg), 8000);
-      joined = false;
-      socket = null;
-      state = null;
-      safe.set('localStorage', 'worker-joined', '0');
-      render();
+      leave();
     });
+    // The projector took this phone out. The old token is refused from now
+    // on; joining again means a new token, so it is a new computer.
+    socket.on('kicked', () => {
+      kicked = true;
+      token = newToken();
+      safe.set(tokenArea, 'worker-token', token);
+      leave();
+    });
+  }
+
+  function leave() {
+    if (socket) { socket.removeAllListeners(); socket.disconnect(); }
+    joined = false;
+    socket = null;
+    state = null;
+    safe.set('localStorage', 'worker-joined', '0');
+    render();
   }
 
   const emit = (event, payload) => { if (socket) socket.emit(event, payload); };
@@ -251,7 +265,7 @@
   }
 
   function currentView() {
-    if (!joined) return 'join';
+    if (!joined) return kicked ? 'kicked' : 'join';
     if (!state) return 'connecting';
     const { me, phase } = state;
     if (phase === 'end') return 'end';
@@ -364,6 +378,16 @@
         </form>`;
     },
 
+    kicked() {
+      return `
+        <div class="result">
+          <div class="result-icon">${icon('user-x')}</div>
+          <h1>Saliste de la actividad</h1>
+          <p class="lead">Quien presenta sacó tu compu del clúster. Si querés volver a jugar, entrá de nuevo.</p>
+        </div>
+        ${dock(`<button class="btn btn-primary btn-lg btn-block cta" type="button" data-rejoin>${icon('log-in')}Volver a entrar</button>`)}`;
+    },
+
     connecting() {
       return waiting('Conectando…');
     },
@@ -472,7 +496,7 @@
       const dots = pts.map((_, i) => `<i class="pdot${i < painted ? ' on' : ''}${i === painted ? ' now' : ''}"></i>`).join('');
       const round = state.manual.round > 1 ? `Vuelta ${state.manual.round} · ` : '';
       const top = part.from
-        ? `<p class="inherit-chip">${icon('heart-handshake')}<span>Parte de <b>${esc(part.from)}</b>: se cayó su compu</span></p>`
+        ? `<p class="inherit-chip">${icon('heart-handshake')}<span>Parte de <b>${esc(part.from)}</b>: ${part.left ? 'salió de la actividad' : 'se cayó su compu'}</span></p>`
         : eyebrow(`${round}Sos un worker: pintá tu parte`);
       return `
         ${top}
@@ -663,6 +687,7 @@
     const pick = e.target.closest('[data-pick]');
     if (pick) { onPick(pick); return; }
     const btn = e.target.closest('button');
+    if (btn && btn.hasAttribute('data-rejoin')) { kicked = false; render(); return; }
     if (!btn || btn.disabled || !state) return;
     if (btn.hasAttribute('data-send')) {
       const part = state.parts.find((pt) => pt.id === Number(btn.dataset.send));

@@ -57,7 +57,7 @@ const iconSprite = buildIconSprite([
   'arrow-right', 'arrow-left', 'arrow-down', 'send', 'circle-alert', 'users', 'power', 'power-off', 'repeat',
   'sparkles', 'monitor', 'smartphone', 'wifi-off', 'layers', 'timer', 'hourglass',
   'trophy', 'heart-handshake', 'shield-check', 'dices', 'party-popper',
-  'crown', 'server', 'user-plus', 'inbox', 'merge', 'hand',
+  'crown', 'server', 'user-plus', 'inbox', 'merge', 'hand', 'user-x', 'log-in',
 ]);
 app.get('/icons.svg', (_req, res) => res.type('image/svg+xml').send(iconSprite));
 
@@ -111,7 +111,13 @@ const S = {
   runTimer: null,
 };
 
-const phoneList = () => [...S.byId.values()];
+// Phones the projector took out stay in `byId` so their name still shows in
+// old summaries, but they are out of every list and count.
+const phoneList = () => [...S.byId.values()].filter((p) => !p.removed);
+
+// Tokens of phones taken out: an idle phone would reconnect by itself, so the
+// token is refused. The person can still join again from the phone (new token).
+const kickedTokens = new Set();
 const byId = (a, b) => a.id - b.id;
 const nameOf = (id) => (S.byId.get(id) || { name: '?' }).name;
 const isLive = (p) => p.connected && !p.off;
@@ -522,23 +528,14 @@ function knockOut(victim, cause, n = S.failCount + 1) {
   if (victim.off) return false;
   const mine = partsOf(victim);
   if (!mine.length) return false;
-  const heirs = liveWorkers().filter((p) => p !== victim);
-  if (!heirs.length) return false; // someone has to be left to do the work
-  const load = new Map(heirs.map((p) => [p.id, partsOf(p).length]));
-  const heir = heirs.sort((a, b) => (load.get(a.id) - load.get(b.id)) || (a.id - b.id))[0];
-
-  const now = Date.now();
-  let pending = 0;
-  for (const part of mine) {
-    part.owner = heir.id;
-    if (S.manual && !part.sent) { part.startAt = now; pending += 1; }
-  }
+  const heir = pickHeir(victim);
+  if (!heir) return false; // someone has to be left to do the work
+  const pending = handParts(mine, heir);
   S.failCount = Math.max(S.failCount, n);
   victim.off = true;
   victim.offCause = cause;
   victim.lostTo = heir.name;
   victim.facts.fallen = true;
-  heir.facts.heir = true;
   clearTimeout(victim.deadTimer);
   S.lastFail = {
     n, cause,
@@ -549,6 +546,26 @@ function knockOut(victim, cause, n = S.failCount + 1) {
   clearPending(victim);
   broadcast();
   return true;
+}
+
+// The live worker with the fewest parts (ties: lowest id), or null.
+function pickHeir(except) {
+  const heirs = liveWorkers().filter((p) => p !== except);
+  if (!heirs.length) return null;
+  const load = new Map(heirs.map((p) => [p.id, partsOf(p).length]));
+  return heirs.sort((a, b) => (load.get(a.id) - load.get(b.id)) || (a.id - b.id))[0];
+}
+
+// Gives `parts` to `heir`; returns how many of them still have to be painted.
+function handParts(parts, heir) {
+  const now = Date.now();
+  let pending = 0;
+  for (const part of parts) {
+    part.owner = heir.id;
+    if (S.manual && !part.sent) { part.startAt = now; pending += 1; }
+  }
+  heir.facts.heir = true;
+  return pending;
 }
 
 function armDeadTimer(p) {
@@ -629,6 +646,36 @@ function revive() {
     }
   }
   S.lastFail = null;
+  broadcast();
+}
+
+// ---------------------------------------------------------------- taking a phone out
+
+// The projector takes out a phone that left, went idle or does not want to
+// play. Its parts go to another worker, like a fall but without the drama:
+// no lastFail, no medals for the one who left. If nobody is left to take
+// them, the driver fills them in at the join.
+function removePhone(id) {
+  const p = S.byId.get(id);
+  if (!p || p.removed) return;
+  if (S.spin && S.spin.candidates.includes(p.id)) cancelSpin();
+  const mine = partsOf(p);
+  const heir = mine.length ? pickHeir(p) : null;
+  if (heir) handParts(mine, heir);
+  p.removed = true;
+  p.registered = false;
+  clearTimeout(p.deadTimer);
+  p.deadTimer = null;
+  kickedTokens.add(p.token);
+  S.phones.delete(p.token);
+  const socket = p.socket;
+  p.socket = null;
+  p.connected = false;
+  if (socket) {
+    socket.emit('kicked');
+    socket.disconnect(true);
+  }
+  clearPending(p);
   broadcast();
 }
 
@@ -745,7 +792,7 @@ function projectorSnapshot() {
     lastFail: lastFailView(),
     spin: S.spin && { n: S.spin.n, candidates: S.spin.candidates, victim: S.spin.victim, ms: S.spin.ms },
     stats: {
-      phones: S.byId.size,
+      phones: phoneList().length,
       connected: phoneList().filter((p) => p.connected).length,
       workers: liveWorkers().length,
       registered: phoneList().filter((p) => p.registered).length,
@@ -797,6 +844,7 @@ function phoneSnapshot(p, byPart) {
     parts: mine.map((part) => ({
       id: part.id,
       from: part.home === p.id ? null : nameOf(part.home),
+      left: part.home !== p.id && !!(S.byId.get(part.home) || {}).removed, // its owner was taken out
       sent: part.sent,
       points: (byPart.get(part.id) || []).map((pt) => ({ x: pt.x, y: pt.y, label: pt.label })),
     })),
@@ -851,15 +899,17 @@ function attachProjector(socket, auth) {
   on('kill', ({ id }) => { if (Number.isInteger(id)) kill(id); });
   on('spin', () => spinStart());
   on('revive', () => revive());
+  on('remove', ({ id }) => { if (Number.isInteger(id)) removePhone(id); });
   on('reset', () => reset());
 }
 
 function attachPhone(socket, auth) {
   const token = typeof auth.token === 'string' ? auth.token.slice(0, 64) : '';
   if (!token) { socket.disconnect(true); return; }
+  if (kickedTokens.has(token)) { socket.emit('kicked'); socket.disconnect(true); return; }
   let p = S.phones.get(token);
   if (!p) {
-    if (S.byId.size >= MAX_PHONES) {
+    if (S.phones.size >= MAX_PHONES) {
       socket.emit('join:error', 'El aula está llena');
       socket.disconnect(true);
       return;

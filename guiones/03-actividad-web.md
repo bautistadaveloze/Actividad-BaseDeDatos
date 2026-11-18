@@ -136,11 +136,13 @@ Debajo: "21 partes · 126 puntos · 4 vueltas · 1 compu caída y ningún dato p
 | Q | Mostrar u ocultar el QR grande |
 | T | Alto contraste |
 | F | Pantalla completa |
-| Esc | Cierra el QR |
+| X | Prender o apagar el modo sacar compus |
+| Esc | Cierra el QR y apaga el modo sacar |
 
 ## Si algo falla
 
 - **Alguien no se conecta:** puede mirar el proyector. La actividad sigue sin él.
 - **Alguien entra tarde:** el cluster manager lo anota como worker solo y recibe su parte en el momento.
+- **Alguien se fue, quedó inactivo o no quiere jugar:** tocá **Sacar** arriba de la grilla del proyector (o la tecla X) y después su compu. Si tenía una parte, pasa a otro worker y no se pierde nada; no cuenta como caída. Su celular muestra "Saliste de la actividad" y, si quiere volver, toca **Volver a entrar**. Tocá **Listo** (o Esc) para dejar de sacar.
 - **Alguien no termina de pintar:** se puede juntar igual desde el proyector; el driver completa lo que falta.
 - **Sin wifi:** usá el plan alternativo del informe, con puntos y centros impresos.

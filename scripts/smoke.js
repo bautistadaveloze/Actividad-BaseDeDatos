@@ -63,6 +63,7 @@ function connect(url, auth) {
   socket.on('state', (s) => { c.state = s; c.listeners.forEach((fn) => fn()); });
   socket.on('auth:error', (m) => c.errors.push(['auth:error', m]));
   socket.on('join:error', (m) => c.errors.push(['join:error', m]));
+  socket.on('kicked', () => c.errors.push(['kicked']));
   socket.on('task', (t) => {
     c.tasks.push(t);
     if (!c.respond) return;
@@ -150,7 +151,7 @@ function checkPhoneShape(s, where) {
   ok(typeof s.dataKey === 'string' && /^\d+:\d+$/.test(s.dataKey), 'dataKey');
   ok(Array.isArray(s.centers) && s.centers.length === 3 && s.centers.every(isPoint), 'centers');
   ok(Array.isArray(s.parts) && s.parts.every((p) => isNum(p.id) && (p.from === null || typeof p.from === 'string')
-    && typeof p.sent === 'boolean' && Array.isArray(p.points) && p.points.every((q) => isPoint(q) && Number.isInteger(q.label))), 'parts');
+    && typeof p.left === 'boolean' && typeof p.sent === 'boolean' && Array.isArray(p.points) && p.points.every((q) => isPoint(q) && Number.isInteger(q.label))), 'parts');
   ok(s.driver === undefined, 'no hay driver de celular');
   ok(isNum(s.workers), 'workers');
   ok(s.spin === null || (isNum(s.spin.n) && isNum(s.spin.ms)), 'spin');
@@ -499,6 +500,64 @@ async function lonePhone(port) {
   await waitFor(proj, (s) => s.phase === 'end' && s.points.every((p) => p.label >= 0), 'end completa lo que faltaba');
 }
 
+// The projector takes phones out: one that never played, one in the middle of
+// its part (the part goes to another worker) and one that is offline.
+async function takeOut(port) {
+  const url = `http://localhost:${port}`;
+  const proj = connect(url, { role: 'projector', key: KEY });
+  const [A, B, C, D] = ['Ana', 'Bruno', 'Caro', 'Dani'].map((n) => phone(url, n));
+  await waitFor(proj, (s) => s.phones.length === 4, '4 celulares');
+  await waitAll([A, B, C, D], (s) => s.phase === 'lobby', 'celulares en lobby');
+  const idOf = (c) => c.state.me.id;
+
+  step('sacar en lobby: no vuelve sola con el mismo token');
+  const dId = idOf(D);
+  proj.socket.emit('remove', { id: 'x' });
+  proj.socket.emit('remove', { id: dId });
+  await waitFor(proj, (s) => s.phones.length === 3 && s.stats.phones === 3, 'Dani sale de la lista');
+  await sleep(150);
+  check(D.errors.some((e) => e[0] === 'kicked') && !D.socket.connected, 'Dani se entera y queda desconectada');
+  const D2 = connect(url, { role: 'worker', token: 'tok-Dani', name: 'Dani' });
+  await sleep(300);
+  check(D2.errors.some((e) => e[0] === 'kicked') && !D2.socket.connected && proj.state.phones.length === 3,
+    'con el token viejo no puede volver sola');
+  B.socket.emit('remove', { id: idOf(A) });
+  await sleep(150);
+  check(proj.state.phones.length === 3, 'un celular no puede sacar a nadie');
+
+  step('sacar en work: su parte pasa a otro worker');
+  proj.socket.emit('phase', { phase: 'howto' });
+  proj.socket.emit('phase', { phase: 'solo' });
+  await waitFor(A, (s) => s.phase === 'solo', 'solo');
+  proj.socket.emit('phase', { phase: 'manager' });
+  await waitAll([A, B, C], (s) => s.me.registered, 'workers anotados');
+  proj.socket.emit('phase', { phase: 'work' });
+  await waitAll([A, B, C], (s) => s.phase === 'work' && s.parts.length === 1, 'cada uno con su parte');
+  C.socket.emit('part:submit', { part: C.state.parts[0].id });
+  await waitFor(proj, (s) => s.manual.done === 1, 'Caro manda su resumen');
+  proj.socket.emit('remove', { id: idOf(B) });
+  await waitFor(A, (s) => s.parts.length === 2 && s.parts[1].from === 'Bruno' && s.parts[1].left,
+    'Ana recibe la parte de Bruno, que salió');
+  checkPhoneShape(A.state, 'parte heredada de quien salió');
+  check(proj.state.manual.total === 3 && proj.state.stats.workers === 2, 'siguen las 3 partes con 2 workers');
+  check(proj.state.lastFail === null, 'sacar no cuenta como caída');
+  for (const part of A.state.parts) A.socket.emit('part:submit', { part: part.id });
+  await waitFor(proj, (s) => s.manual.done === 3, 'llegan las 3 partes');
+  proj.socket.emit('join');
+  await waitFor(proj, (s) => s.phase === 'combine' && s.join.parts === 3 && s.join.filled === 0, 'se junta sin perder nada');
+  check(proj.state.inbox.some((e) => e.from === 'Bruno' && e.by === 'Ana'), 'el resumen de la parte de Bruno lo hizo Ana');
+
+  step('sacar a una compu desconectada y volver a entrar con otro token');
+  C.socket.close();
+  await waitFor(proj, (s) => s.phones.find((p) => p.name === 'Caro').status === 'offline', 'Caro se desconecta');
+  proj.socket.emit('remove', { id: idOf(C) });
+  await waitFor(proj, (s) => s.phones.length === 1, 'solo queda Ana');
+  const C2 = connect(url, { role: 'worker', token: 'tok-Caro-2', name: 'Caro' });
+  await waitFor(C2, (s) => s.me.role === 'worker' && s.parts.length === 1, 'Caro vuelve como compu nueva y recibe una parte');
+  check(proj.state.phones.length === 2, 'vuelve a la lista');
+  checkProjectorShape(proj.state, 'después de sacar');
+}
+
 // ---------------------------------------------------------------- main
 
 async function withServer(label, fn) {
@@ -530,6 +589,9 @@ async function main() {
 
   console.log('Ensayo con un solo celular');
   await withServer('un celular', lonePhone);
+
+  console.log('Sacar compus');
+  await withServer('sacar', takeOut);
 }
 
 main().catch((err) => { failures.push(err.stack || err.message); }).then(() => {

@@ -244,9 +244,19 @@ CONVERGED_SHIFT = 0.5, MAX_ROUNDS = 15
 - `revive` prende a los que están conectados y devuelve cada parte a su `home` si su dueño original es un worker vivo.
 - `reset` vuelve a `lobby`, borra datos y medallas, y descarta a los desconectados.
 
-### 6.6 Prueba
+### 6.6 Sacar una compu
 
-`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: que no se salte el paso de cómo se juega, driver solo, que ningún celular quede como driver ni pueda pedir compus, juntar o arrancar vueltas, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset y un ensayo con un solo celular.
+Para alguien que se fue, quedó inactivo o no quiere jugar. Se puede en cualquier paso.
+
+- **Proyector:** el botón "Sacar" (tecla X) arriba de la grilla prende el modo sacar: la grilla se marca en rojo al pasar el mouse y tocar una compu la saca. El modo queda prendido para sacar varias; se apaga con el mismo botón ("Listo") o con Esc. Aviso: "Tocá una compu para sacarla. Si quiere volver, entra de nuevo desde el celular."
+- **Servidor (`remove { id }`):** si la compu tenía partes, pasan todas a un heredero, igual que en una caída (el worker vivo con menos partes; empate: menor id). No es una caída: no cambia `lastFail` ni da medallas a quien sale. Si no queda nadie para heredar, el driver completa esas partes al juntar. Si la compu era candidata de la ruleta, la ruleta se cancela.
+- La compu sale de todas las listas y cuentas, pero su nombre sigue en los resúmenes viejos. Su token queda bloqueado: un celular inactivo no vuelve solo al reconectarse.
+- **Celular:** recibe `kicked` y muestra "Saliste de la actividad" · "Quien presenta sacó tu compu del clúster. Si querés volver a jugar, entrá de nuevo." con el botón "Volver a entrar", que lleva al formulario con el nombre ya puesto. Al entrar usa un token nuevo: es una compu nueva y, si ya hay datos, recibe su parte.
+- Quien hereda ve la parte con el cartel "Parte de Bruno: salió de la actividad".
+
+### 6.7 Prueba
+
+`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: que no se salte el paso de cómo se juega, driver solo, que ningún celular quede como driver ni pueda pedir compus, juntar o arrancar vueltas, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset, un ensayo con un solo celular y sacar compus (en lobby, con una parte a medio pintar y desconectada, con el token viejo bloqueado y la vuelta con uno nuevo).
 
 ## 7. Contrato de sockets
 
@@ -288,14 +298,14 @@ El rol va en `auth`. Proyector: `{ role: 'projector', key }` (si la clave está 
   dataKey: '3:2',                // cambia con cada vuelta a mano; clave para sessionStorage
   centers, round, converged, running, busy,
   manual: null | { round },
-  parts: [{ id, from: null | 'Bruno', sent, points: [{ x, y, label }] }],   // la propia primero
+  parts: [{ id, from: null | 'Bruno', left, sent, points: [{ x, y, label }] }],   // la propia primero; left: su dueño salió (6.6)
   workers,
   join, spin: null | { n, ms }, lastFail: null | { n, cause, victim, heir, parts, me: 'victim' | 'heir' | 'safe' },
   stats: { workers, points, parts },
 }
 ```
 
-Además: `task { round, centers }` en las vueltas automáticas.
+Además: `task { round, centers }` en las vueltas automáticas y `kicked` cuando el proyector saca la compu (también al intentar entrar con un token bloqueado; después el servidor corta la conexión).
 
 ### 7.3 Eventos
 
@@ -305,6 +315,7 @@ Además: `task { round, centers }` en las vueltas automáticas.
 | Proyector | `join` | — | Junta (`work`: pasa a `combine`; `fail`: en el lugar) |
 | Proyector | `round` / `run` | — / `{ on }` | Vuelta automática / seguir solo (`combine`) |
 | Proyector | `spin` / `kill` / `revive` | — / `{ id }` / — | Caídas (6.5) |
+| Proyector | `remove` | `{ id }` | Saca una compu (6.6) |
 | Proyector | `reset` | — | Vuelve a `lobby` |
 | Celular | `solo:progress` | `{ done }` | Cuántos pintó solo |
 | Celular | `part:submit` | `{ part }` | Manda el resumen de esa parte (tiene que ser suya y no enviada) |
@@ -333,7 +344,8 @@ Para ensayar, `/?nombre=Ana` entra directo y cada pestaña abierta así es una c
 | Espacio o R | Otra vuelta (Juntar) |
 | S | Repetir solo / pausar (Juntar) |
 | K | Girar la ruleta (Se cae una) |
+| X | Prender o apagar el modo sacar compus |
 | Q | Mostrar u ocultar el QR grande |
 | T | Alto contraste |
 | F | Pantalla completa |
-| Esc | Cierra el QR o el diálogo |
+| Esc | Cierra el QR o el diálogo y apaga el modo sacar |

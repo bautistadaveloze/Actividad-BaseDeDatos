@@ -2,7 +2,7 @@
 
 Guía para presentar **Procesamiento distribuido y ML sobre datos masivos**, con Apache Spark (MLlib) como tecnología sugerida. No es un texto para leer en voz alta. Para cada diapositiva dice qué idea tiene que quedar, cómo explicarla para alguien que no sabe nada del tema y qué conviene saber por si preguntan.
 
-La presentación es la del artifact de Slides (45 diapositivas). El orden va de lo general a lo particular: primero las ideas del procesamiento distribuido y del machine learning sobre datos masivos, que son el tema, y después Spark, que es la tecnología sugerida para aplicarlas. Las notas del orador de cada diapositiva tienen una versión más literal; esta guía es para entender y preparar.
+La presentación es la del artifact de Slides (44 diapositivas). El orden va de lo general a lo particular: primero las ideas del procesamiento distribuido y del machine learning sobre datos masivos, que son el tema, y después Spark, que es la tecnología sugerida para aplicarlas. Las notas del orador de cada diapositiva tienen una versión más literal; esta guía es para entender y preparar.
 
 ---
 
@@ -23,10 +23,10 @@ Cada diapositiva tiene hasta cuatro partes:
 | 02 · Procesamiento distribuido | 9–15 | 8 min |
 | 03 · ML sobre datos masivos (persona 1): qué es ML y K-Means | 16–19 | 4 min |
 | 03 · ML sobre datos masivos (persona 2): entrenar con datos repartidos | 20–24 | 5 min |
-| 04 · Apache Spark y MLlib | 25–41 | 12 min |
-| 05 · Cierre y actividad | 42–45 | 2 min + unos 7 min de actividad |
+| 04 · Apache Spark y MLlib | 25–40 | 12 min |
+| 05 · Cierre y actividad | 41–44 | 2 min + unos 7 min de actividad |
 
-Total: unos 38 minutos de teoría y 7 de actividad. Si tenés que recortar, pasá rápido la 38 (stack) y la 40 (pipeline). No saltees pasos del recorrido (26–37): es una línea de tiempo y cada paso se apoya en el anterior; si estás muy justo, en la 33 quedate solo con qué es el shuffle.
+Total: unos 38 minutos de teoría y 7 de actividad. Si tenés que recortar, pasá rápido la 37 (stack) y la 39 (pipeline). No saltees pasos del recorrido (26–36): es una línea de tiempo y cada paso se apoya en el anterior; si estás muy justo, en la 32 quedate solo con qué es el shuffle.
 
 ### Consejos generales
 
@@ -385,7 +385,9 @@ El objetivo es entender qué es machine learning, cómo se entrena un modelo cua
 
 Hasta acá todo fue general. El objetivo ahora es que reconozcan en Spark cada idea que ya vieron: los roles, las particiones, mover el cálculo, la memoria, los fallos y el patrón de entrenamiento.
 
-La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que arranca el programa hasta que vuelve el resultado. La diapositiva 26 muestra el mapa completo, y cada diapositiva del recorrido tiene arriba la misma línea de pasos con el actual resaltado. Usala para ubicar al público: "estamos en el paso 6 de 10". Es la parte más larga: andá despacio.
+La parte central es **el recorrido (26–36)**: diez pasos en orden, desde que arranca el programa hasta que vuelve el resultado. No hay una diapositiva con el mapa completo a propósito: nombrar stages o particiones antes de explicarlos no le sirve a quien no sabe del tema. Cada diapositiva del recorrido tiene arriba una línea de pasos: los que ya vimos con su nombre, el actual resaltado y los que faltan solo con el número. Usala para ubicar al público: "estamos en el paso 6 de 10". Es la parte más larga: andá despacio.
+
+Las diapositivas del recorrido se explican con dibujos, no con texto: la compu azul es el driver, las compus violeta, celeste y rosa son los workers, y la hoja color papel es el plan (y después, la receta del lineage). Señalá los dibujos mientras hablás.
 
 ### 25 · Qué es Spark
 
@@ -402,40 +404,20 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 - **Databricks:** sus creadores fundaron esta empresa, que es la que más lo desarrolla.
 - **Si preguntan si Spark reemplaza a Hadoop:** reemplaza a MapReduce, el motor. Muchas veces Spark corre usando HDFS para guardar y YARN para administrar las máquinas.
 
-**Pasaje:** "Antes de abrirlo pieza por pieza, miremos el recorrido completo."
+**Pasaje:** "Ahora vamos a abrirlo, paso a paso: qué pasa desde que arranca un programa hasta que vuelve el resultado."
 
-### 26 · El recorrido completo
-
-**Idea:** todo lo que hace Spark es una línea de tiempo de diez pasos. Del 1 al 5 se prepara todo y todavía no se procesa ningún dato. Del 6 al 10, una acción dispara la ejecución.
-
-**Cómo explicarlo:**
-- Es el mapa: leelo rápido, sin detalle. Primer clic, la fila de arriba; segundo clic, la de abajo.
-- Contalo como una cocina, de punta a punta:
-  1. **Driver:** arranca el jefe de cocina.
-  2. **Recursos:** le pide cocineros a una agencia, que es el cluster manager.
-  3. **Executors:** llegan los cocineros, uno por hornalla (cada hornalla es un worker).
-  4. **Particiones:** los ingredientes ya están repartidos en la heladera de cada hornalla.
-  5. **Plan:** el jefe anota la receta, pero nadie cocina todavía.
-  6. **Stages:** el cliente pide el plato (la acción) y el jefe organiza el trabajo por etapas.
-  7. **Tareas:** a cada cocinero le da la parte que corresponde a los ingredientes que ya tiene.
-  8. **Resultados:** cada uno cocina lo suyo y le pasa al jefe algo chico.
-  9. **Memoria:** si hay que repetir, los ingredientes quedan sobre la mesada y no vuelven a la heladera.
-  10. **Fallas:** si un cocinero se enferma, otro rehace su parte con la receta.
-- Avisá que esta línea va a quedar arriba en las próximas diapositivas.
-
-**Pasaje:** "Vamos paso por paso. Paso uno: arranca el programa."
-
-### 27 · Paso 1 · Todo empieza en el driver
+### 26 · Paso 1 · Todo empieza en el driver
 
 **Idea:** el driver es el proceso que corre tu programa. Coordina todo, pero no procesa los datos.
 
 **Cómo explicarlo:**
+- Mostrá la línea de arriba: "son diez pasos; cada uno aparece con su nombre cuando lo explicamos".
 - Arrancá recordando los tres roles de la diapositiva 7.
 - "Es el jefe de cocina, pero todavía no tiene cocineros." Remarcá que todavía no hay máquinas trabajando ni tareas: está solo.
 
 **Para entender vos:** "proceso" es un programa en ejecución. El driver puede correr en tu computadora o dentro del clúster. En código, aparece cuando creás la sesión de Spark (`SparkSession`).
 
-### 28 · Paso 2 · El driver pide recursos
+### 27 · Paso 2 · El driver pide recursos
 
 **Idea:** el driver le pide máquinas y memoria al cluster manager.
 
@@ -444,7 +426,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 - Nombrá los tres cluster managers posibles: standalone, que viene con Spark; YARN, el de Hadoop que vimos; y Kubernetes, muy usado hoy para administrar servidores en la nube.
 - Remarcá la confusión más común: **el cluster manager no procesa ni un dato.** Es como una agencia que te consigue cocineros, pero no cocina.
 
-### 29 · Paso 3 · En cada worker arranca un executor
+### 28 · Paso 3 · En cada worker arranca un executor
 
 **Idea:** en cada worker se lanza un executor, el proceso que hace el trabajo de verdad, con su propia CPU y memoria. Por ahora están vacíos.
 
@@ -456,7 +438,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 **Para entender vos:** una máquina puede tener más de un executor, y cada executor corre varias tareas a la vez (una por núcleo). Para la charla alcanza con uno por worker.
 
-### 30 · Paso 4 · Los datos se parten en particiones
+### 29 · Paso 4 · Los datos se parten en particiones
 
 **Idea:** los datos ya estaban guardados en bloques. Spark los ve como una sola colección, el RDD, pero la guarda en pedazos llamados particiones. Se corre una tarea por partición.
 
@@ -467,11 +449,11 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
   - **Particionado:** se procesa en paralelo.
   - **Inmutable:** no se modifica; cada operación crea uno nuevo.
   - **Resiliente:** si se pierde una partición, se puede recalcular.
-- Avisá que lo de resiliente lo vamos a ver en el paso 10 (diapositiva 37).
+- Avisá que lo de resiliente lo vamos a ver en el paso 10 (diapositiva 36).
 
 **Para entender vos:** que sea inmutable es lo que permite recalcular: como nada se pisa, siempre se puede rehacer un pedazo desde el original.
 
-### 31 · Paso 4 · Cada worker recibe sus particiones
+### 30 · Paso 4 · Cada worker recibe sus particiones
 
 **Idea:** cada executor trabaja con las particiones que tiene en su propia máquina. Eso es **localidad de datos**.
 
@@ -484,14 +466,16 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 - **Qué pasa realmente:** la animación simplifica. Cada executor lee del almacenamiento (por ejemplo HDFS) los bloques que tiene en su misma máquina, y si se le pide, los guarda en memoria.
 - **DataFrame:** es lo que más se usa hoy. Es lo mismo que un RDD pero con columnas y un esquema, como una tabla, y eso permite optimizar las consultas.
 
-### 32 · Paso 5 · Transformaciones y acciones
+### 31 · Paso 5 · Primero se anota, después se hace
 
 **Idea:** Spark no ejecuta cada operación cuando la escribís. Las transformaciones solo se anotan en un plan; recién una acción pone a trabajar al clúster. A eso se le dice evaluación perezosa.
 
 **Cómo explicarlo:**
-- Ejemplo que sirve para este paso y el siguiente: contar cuántos errores hay de cada tipo en los logs de un servidor.
-- **Transformaciones** (leer, filtrar, transformar, agrupar): cada una recibe un RDD y devuelve uno nuevo, sin tocar el original. Pero cuando la escribís, Spark no lee ni un byte ni manda ninguna tarea: solo anota "este RDD sale de aquel aplicando un filtro". Por eso la línea vuelve al instante aunque el archivo pese un terabyte.
-- **Acciones** (contar, guardar, traer datos al driver): no devuelven un RDD, devuelven un resultado concreto. Es lo único que dispara la ejecución.
+- Ejemplo que sirve para este paso y los siguientes: contar cuántos errores hay de cada tipo en los logs de un servidor.
+- Antes del primer clic, describí el dibujo: a la izquierda el driver; en el medio, la hoja donde anota el plan; a la derecha, los workers con sus particiones, dormidos ("zzz").
+- Clics 1 a 4: aparece un paso por clic en la hoja (leer los logs, quedarse con los errores, sacar el tipo de error, agrupar por tipo). Después de cada uno preguntá: "¿algún worker se movió?". No. Con el cuarto aparece "Transformaciones: solo se anotan".
+- **Transformaciones:** cada una recibe un RDD y devuelve uno nuevo, sin tocar el original. Pero cuando la escribís, Spark no lee ni un byte ni manda ninguna tarea: solo la anota. Por eso la línea vuelve al instante aunque el archivo pese un terabyte.
+- Clic 5: aparece **Contar**, con el rayo. Es una **acción**: un pedido de un resultado concreto (contar, guardar, traer datos al driver). Las flechas verdes salen hacia los workers, se prenden sus pantallas y desaparece el "zzz": es lo único que dispara la ejecución.
 - Analogía: la lista del súper. Anotar "leche, pan, huevos" no te trae nada a casa; vas una vez, cuando la lista está completa, y elegís el mejor recorrido.
 - Por qué conviene esperar: con el plan completo, Spark lo optimiza.
   - Encadena pasos: filtrar y transformar se hacen en una sola pasada, sin guardar un RDD intermedio.
@@ -501,23 +485,26 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 **Para entender vos:** en código, `filter` y `map` son transformaciones; `count`, `collect` y `write` son acciones. Con DataFrames hay un optimizador (Catalyst) que reordena el plan automáticamente.
 
-### 33 · Paso 6 · Un job se divide en stages y tasks
+### 32 · Paso 6 · El trabajo se corta en stages
 
 **Idea:** cada acción dispara un job. Spark lo corta en stages donde hace falta un shuffle, y cada stage se divide en tasks, una por partición.
 
-**Cómo explicarlo:** son cuatro palabras; definilas una por clic, siempre con el ejemplo de los logs.
-- **Job:** todo el trabajo que dispara una acción. Una acción, un job: si el programa tiene tres `count`, son tres jobs. El driver lo arma a partir del plan del paso 5, que es un DAG: un grafo de pasos con flechas que siempre van para adelante.
-- **Stage:** una tanda de pasos que cada partición puede hacer sola, sin pedirle datos a otra máquina. Leer, filtrar y transformar se hacen línea por línea: van juntos en el stage 1, en una sola pasada.
-- **Shuffle:** reacomodar los datos entre las máquinas para que todos los registros con la misma clave terminen en el mismo lugar. Al principio las particiones se arman por posición en el archivo, no por contenido: los errores "timeout" están desparramados en todas. Para contarlos, cada máquina le manda a cada otra lo que le toca (todos con todos: por eso las líneas cruzadas). Analogía: el correo, donde todas las cartas para Córdoba terminan en el mismo camión. Es el mismo shuffle de MapReduce (diapositiva 11) y es lo más caro, porque usa la red y el disco. Por eso Spark corta ahí: el stage 2 no arranca hasta que termina el stage 1.
-- **Task:** un stage aplicado a una partición. Es la unidad mínima de trabajo, lo que el driver le manda a un executor. Stage 1 con cuatro particiones: cuatro tasks. Después del shuffle quedan tres: tres tasks.
+**Cómo explicarlo:** todo con el dibujo y el ejemplo de los logs. Cada figurita es un error, y la forma dice de qué tipo es: triángulo, círculo o cuadrado. Cada tipo tiene el color de la compu que lo va a juntar.
+- Al llegar se ve el **stage 1**: los mismos tres workers, cada uno con errores de los tres tipos mezclados. Leer, quedarse con los errores y sacar el tipo se hace línea por línea, así que cada worker lo hace solo, con lo suyo. **Stage:** una tanda de pasos que cada partición puede hacer sola, sin pedirle datos a otra máquina.
+- **Task:** señalá la pantalla de cada compu (T1 T2, T3 T4, T5 T6). Una task es un stage aplicado a una partición, lo que el driver le manda a un executor. Seis particiones, seis tasks.
+- Preguntá: "para contar los triángulos, ¿qué problema hay?". Están desparramados en las tres compus: las particiones se arman por posición en el archivo, no por contenido.
+- Primer clic, **shuffle:** cada pieza viaja a la compu de su color. Todos le mandan a todos, por eso las líneas se cruzan. Analogía: el correo, donde todas las cartas para Córdoba terminan en el mismo camión. Es el mismo shuffle de MapReduce (diapositiva 11) y es lo más caro, porque usa la red y el disco. Por eso Spark corta ahí: el stage 2 no arranca hasta que termina el stage 1.
+- Segundo clic, **stage 2:** cada compu quedó con un solo tipo y lo cuenta sola: 7 triángulos, 5 círculos, 4 cuadrados. Tres particiones, tres tasks (T7, T8, T9).
+- Tercer clic, **job:** la llave de abajo junta todo. Un job es todo el trabajo que dispara una acción, en este caso Contar. Una acción, un job: si el programa tiene tres `count`, son tres jobs.
 - Resumí: una acción dispara un job, el job se corta en stages en cada shuffle, y cada stage se reparte en una task por partición.
 
 **Para entender vos:**
+- **DAG:** el driver arma el job a partir del plan del paso 5, que por dentro es un DAG: un grafo de pasos con flechas que siempre van para adelante. No hace falta nombrarlo si no preguntan.
 - **Dónde corta un stage:** en las *dependencias anchas*, cuando una partición nueva necesita datos de muchas particiones anteriores (agrupar, ordenar, unir tablas).
 - **Dónde no corta:** en las *dependencias angostas*, como filtrar o transformar fila por fila, que quedan en el mismo stage.
-- **Antes del shuffle** cada máquina suele contar lo suyo y manda solo el conteo parcial ("timeout: 40"), no cada línea. Es la misma idea que los resúmenes de la actividad.
+- **Antes del shuffle** cada máquina suele contar lo suyo y manda solo el conteo parcial ("timeout: 40"), no cada línea. Es la misma idea que los resúmenes de la actividad. El dibujo muestra viajar las piezas para que se entienda el movimiento.
 
-### 34 · Paso 7 · El driver manda las tareas
+### 33 · Paso 7 · El driver manda las tareas
 
 **Idea:** cada tarea va al executor que ya tiene su partición. Lo que viaja por la red es la tarea, que es chiquita, no los datos.
 
@@ -528,7 +515,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 **Para entender vos:** si preguntan por qué las tareas recién aparecen acá, es porque el driver las arma cuando llega la acción (paso 6).
 
-### 35 · Paso 8 · Vuelven resultados, no datos
+### 34 · Paso 8 · Vuelven resultados, no datos
 
 **Idea:** cada executor procesa sus particiones ahí mismo y devuelve al driver un resultado chico. **Se mueve el cálculo, no los datos.**
 
@@ -539,7 +526,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 **Pregunta al público:** "¿Qué pesa más, una tarea o una partición de 128 MB?"
 
-### 36 · Paso 9 · Cinco iteraciones: Hadoop contra Spark
+### 35 · Paso 9 · Cinco iteraciones: Hadoop contra Spark
 
 **Idea:** con los datos en memoria, las iteraciones siguientes son solo cálculo. Con cinco iteraciones, Spark tarda casi tres veces menos, y la diferencia crece con más iteraciones.
 
@@ -553,13 +540,15 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 - El paper de los RDD es de Zaharia y otros, NSDI 2012. La ganancia depende del caso: en trabajos de una sola pasada la diferencia es chica, porque igual hay que leer todo una vez.
 - Sin `cache()`, cada acción volvería a leer del disco (naranja, azul, naranja, azul…). Igual sería más corto que Hadoop, porque no escribe al disco entre paso y paso: dentro de un stage, Spark encadena los pasos en memoria.
 
-### 37 · Paso 10 · Si se cae un nodo: lineage
+### 36 · Paso 10 · Si se cae un worker: lineage
 
 **Idea:** en general, si se cae un nodo se repite su tarea con una copia de los datos (diapositiva 14). Pero Spark tiene los resultados intermedios en memoria, sin copias. Por eso no guarda copias de cada resultado intermedio: guarda la receta de cómo se calculó cada partición. Si se pierde una, la rehace en otro nodo siguiendo esa receta.
 
 **Cómo explicarlo:**
 - Analogía de cocina: si se te cae una torta, no necesitás tener otra torta de repuesto si tenés la receta y los ingredientes.
-- Seguí el dibujo: P2 salía del bloque 2 de HDFS, filtrado y transformado. Se cae el worker, Spark repite solo esa cadena en otro worker, y P1 y P3 no se tocan.
+- Seguí el dibujo: a la izquierda, tres workers con P1, P2 y P3; en el medio, la receta de P2, que son los mismos pasos que el driver anotó en el paso 5.
+  - Primer clic: se cae el worker celeste (la cruz roja) y P2 se pierde.
+  - Segundo clic: Spark repite la receta y P2 aparece rehecha en el worker rosa. P1 y P3 no se tocan.
 - Conectá con la inmutabilidad (paso 4): como nada se pisa, la receta siempre funciona.
 - Cerrá el recorrido: "del driver al resultado, aunque se caiga una máquina".
 
@@ -568,7 +557,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 - **Si se cae el driver:** el lineage no lo cubre. Si se cae el driver se pierde el trabajo y hay que relanzarlo.
 - **Nodos lentos en Spark:** usa la ejecución especulativa de la diapositiva 15. Viene **desactivada por defecto** (`spark.speculation`). Con los valores por defecto actuales, una tarea es candidata cuando ya terminó el 90 % del stage y ella tarda más de 3 veces la mediana.
 
-### 38 · Un motor y varias bibliotecas
+### 37 · Un motor y varias bibliotecas
 
 **Idea:** todo el recorrido es Spark Core. Encima hay bibliotecas que lo usan, y una es MLlib, la de machine learning.
 
@@ -581,7 +570,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 **Para entender vos:** Structured Streaming procesa datos que llegan en tiempo real. GraphX trabaja con grafos, o sea datos de redes y conexiones, como quién sigue a quién.
 
-### 39 · MLlib: algoritmos ya distribuidos
+### 38 · MLlib: algoritmos ya distribuidos
 
 **Idea:** MLlib trae algoritmos que ya saben trabajar con datos repartidos. No hay que programar la distribución.
 
@@ -607,7 +596,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
   - Recomendación: ALS.
   - Clustering: K-Means.
 
-### 40 · Un pipeline encadena los pasos
+### 39 · Un pipeline encadena los pasos
 
 **Idea:** en la práctica no se programa el ciclo de entrenamiento a mano: se arma un pipeline con piezas que transforman datos (transformers) y piezas que aprenden (estimators).
 
@@ -622,7 +611,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 - Con K-Means se ve clarísimo: `KMeans(k=3)` es el estimator; `fit` es repetir las vueltas hasta que los centros no se mueven; el modelo son los tres centros, y como transformer le agrega a cada punto nuevo la columna "grupo".
 - La ventaja: se entrena toda la cadena de una vez y después a los datos nuevos se les aplican los mismos pasos en el mismo orden, sin riesgo de preparar los datos de una forma al entrenar y de otra al predecir.
 
-### 41 · Cuándo conviene usar Spark
+### 40 · Cuándo conviene usar Spark
 
 **Idea:** Spark no es siempre la respuesta. Conviene cuando los datos no entran en una máquina o cuando el algoritmo recorre los mismos datos muchas veces. Si entran en tu computadora, hay herramientas más simples y más rápidas.
 
@@ -634,7 +623,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 ## 05 · Cierre y actividad
 
-### 42 · Cada problema, su solución
+### 41 · Cada problema, su solución
 
 **Idea:** los cuatro problemas del principio más el del machine learning, cada uno con su solución general y cómo la aplica Spark.
 
@@ -643,17 +632,17 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
   | Problema | Solución general | En Spark | Diapositivas |
   |---|---|---|---|
-  | Partir los datos | Particiones, una tarea por partición | RDD y DataFrames | 8, 30–31 |
-  | Red lenta | Mover el cálculo, no los datos | Tareas al executor que tiene la partición | 10, 34–35 |
-  | Fallas | Rehacer lo perdido en otro nodo | Lineage | 14, 37 |
+  | Partir los datos | Particiones, una tarea por partición | RDD y DataFrames | 8, 29–30 |
+  | Red lenta | Mover el cálculo, no los datos | Tareas al executor que tiene la partición | 10, 33–34 |
+  | Fallas | Rehacer lo perdido en otro nodo | Lineage | 14, 36 |
   | Nodos lentos | Ejecución especulativa | `spark.speculation` | 15 |
-  | ML iterativo | Datos en memoria entre pasadas | `cache()` | 24, 36 |
+  | ML iterativo | Datos en memoria entre pasadas | `cache()` | 24, 35 |
 
 - Es el cierre de la teoría: si alguien se perdió en el medio, acá se reengancha.
 
 **Pasaje:** "Y ahora, en vez de escucharlo, lo van a vivir".
 
-### 43 · Los pasos, unos siete minutos
+### 42 · Los pasos, unos siete minutos
 
 **Idea:** anticipar qué va a pasar en la actividad para que nadie se pierda.
 
@@ -667,9 +656,9 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
   6. El driver junta los resúmenes, mueve los centros y repite hasta que no cambian.
   7. Se cae una compu y otra hace su parte: no se pierde nada.
   8. Cierre: qué fue cada cosa.
-- Es el mismo orden del recorrido (26–37): el driver, el driver pide recursos, los workers, las particiones, las tareas y los resultados que vuelven.
+- Es el mismo orden del recorrido (26–36): el driver, el driver pide recursos, los workers, las particiones, las tareas y los resultados que vuelven.
 
-### 44 · El clúster son ustedes
+### 43 · El clúster son ustedes
 
 **Idea:** instrucciones para entrar.
 
@@ -683,7 +672,7 @@ La parte central es **el recorrido (26–37)**: diez pasos en orden, desde que a
 
 **Para entender vos:** la diapositiva no tiene la dirección escrita: la gente entra con el QR del proyector. Antes de la clase probá entrar desde un celular con datos móviles, no solo con el wifi de tu casa. Para ensayar sin gente, `npm run bots -- 25` simula 25 celulares. El paso a paso de la actividad está en `guiones/03-actividad-web.md`.
 
-### 45 · Preguntas
+### 44 · Preguntas
 
 **Idea:** cierre y referencias.
 
@@ -699,12 +688,12 @@ En cada paso conectá lo que pasa en los celulares con una diapositiva:
 |---|---|---|---|
 | Unirse | Cada celular entra y recibe un número | "Cada celular es una compu" | 6 |
 | Cómo se juega | Ejemplo en el proyector y 3 puntos de práctica en el celular | "Cada punto va con el centro más cercano: eso es asignar en K-Means" | 18–19 |
-| Driver solo | Cada uno pinta solo todos los puntos durante 20 segundos y nadie termina | "El driver es el programa que tiene el trabajo. Solo, con todos los datos, no llega" | 5, 27 |
-| Cluster manager | Aparece el proyector como cluster manager y anota a cada celular libre como worker | "El cluster manager no trabaja: sabe qué compus están libres y se las presta al driver" | 7, 28 |
-| Workers | Cada uno pinta su parte de 6 puntos y le manda un resumen al driver | "Cada parte es una partición; pintarla es una tarea. Viajan resúmenes, no puntos" | 29–35 |
-| Juntar | El driver junta los resúmenes, mueven los centros y repiten solos | "Juntar es el reduce. Repetir hasta que no cambie es entrenar. Por eso conviene la memoria" | 20, 22, 36 |
-| Se cae una | Se cae una compu y otra pinta su parte | "No se perdió nada: el cluster manager se dio cuenta y la tarea se hizo en otra compu" | 14, 37 |
-| Cierre | Tabla del aula contra un clúster de verdad | "Todo lo que hicimos a mano, MLlib lo hace en una línea" | 39 |
+| Driver solo | Cada uno pinta solo todos los puntos durante 20 segundos y nadie termina | "El driver es el programa que tiene el trabajo. Solo, con todos los datos, no llega" | 5, 26 |
+| Cluster manager | Aparece el proyector como cluster manager y anota a cada celular libre como worker | "El cluster manager no trabaja: sabe qué compus están libres y se las presta al driver" | 7, 27 |
+| Workers | Cada uno pinta su parte de 6 puntos y le manda un resumen al driver | "Cada parte es una partición; pintarla es una tarea. Viajan resúmenes, no puntos" | 28–34 |
+| Juntar | El driver junta los resúmenes, mueven los centros y repiten solos | "Juntar es el reduce. Repetir hasta que no cambie es entrenar. Por eso conviene la memoria" | 20, 22, 35 |
+| Se cae una | Se cae una compu y otra pinta su parte | "No se perdió nada: el cluster manager se dio cuenta y la tarea se hizo en otra compu" | 14, 36 |
+| Cierre | Tabla del aula contra un clúster de verdad | "Todo lo que hicimos a mano, MLlib lo hace en una línea" | 38 |
 
 ---
 
@@ -754,14 +743,14 @@ Para repasar antes de presentar. El número indica dónde aparece por primera ve
 | Cluster manager | Presta máquinas a cada programa (standalone, YARN, Kubernetes); en standalone se llama master | 7 |
 | Worker | Máquina que trabaja | 7 |
 | Straggler | Nodo que no falla pero anda lento y frena a todos | 8, 13 |
-| Tarea (task) | Un pedazo de trabajo sobre una partición | 8, 33 |
-| Partición | Cada pedazo de los datos; se procesa una tarea por partición | 8, 30 |
+| Tarea (task) | Un pedazo de trabajo sobre una partición | 8, 32 |
+| Partición | Cada pedazo de los datos; se procesa una tarea por partición | 8, 29 |
 | MapReduce | Modelo de Google: el programador escribe map y reduce, y el sistema hace el resto | 9 |
 | Hadoop | Versión libre de MapReduce, con HDFS y YARN | 9 |
-| YARN | Administrador de máquinas de Hadoop; Spark lo puede usar | 9, 28 |
+| YARN | Administrador de máquinas de Hadoop; Spark lo puede usar | 9, 27 |
 | HDFS | Sistema de archivos que reparte bloques en muchas máquinas, con 3 copias | 10 |
 | Map | Cada máquina procesa su pedazo y anota pares clave-valor | 11 |
-| Shuffle | Reacomodar por la red los datos para juntar los de la misma clave | 11, 33 |
+| Shuffle | Reacomodar por la red los datos para juntar los de la misma clave | 11, 32 |
 | Reduce | Combinar los valores de cada clave | 11 |
 | Par clave-valor | Un dato con etiqueta, como (gato, 1) | 11 |
 | Heartbeat / latido | Señal periódica con la que el coordinador sabe que un nodo sigue vivo | 14 |
@@ -776,24 +765,24 @@ Para repasar antes de presentar. El número indica dónde aparece por primera ve
 | Centro (centroide) | El punto que representa a un grupo en K-Means | 18 |
 | Broadcast | Mandar una copia de algo chico a todos los workers | 22 |
 | Combinar en árbol | Sumar resúmenes de a pares; en Spark se llama treeAggregate | 22 |
-| Job | En Hadoop, un map y un reduce completos; en Spark, lo que dispara una acción | 23, 33 |
+| Job | En Hadoop, un map y un reduce completos; en Spark, lo que dispara una acción | 23, 32 |
 | RAM / memoria | Almacenamiento rápido que se borra al apagar | 24 |
 | Caché | Guardar algo en memoria para reusarlo | 24 |
-| Executor | Proceso de Spark en un worker que procesa particiones | 29 |
-| RDD | *Resilient Distributed Dataset*: la colección repartida de Spark, particionada, inmutable y resiliente | 30 |
-| DataFrame | Un RDD con columnas, como una tabla | 31 |
-| Localidad de datos | Procesar cada partición donde ya está | 31 |
-| Transformación | Paso que describe un cálculo pero no lo ejecuta | 32 |
-| Acción | Pedido de un resultado que dispara la ejecución | 32 |
-| Evaluación perezosa | Anotar el plan y ejecutar recién cuando hace falta | 32 |
-| Stage | Pasos que se hacen sin mover datos entre máquinas | 33 |
-| DAG | Diagrama de pasos con flechas que no vuelven atrás | 33 |
-| Lineage | La receta de cómo se calculó cada partición | 37 |
-| Checkpoint | Guardar en disco un punto intermedio para acortar la receta | 37 |
-| MLlib | La biblioteca de machine learning de Spark | 38 |
-| Feature | Una columna que describe cada dato, en forma de número | 39 |
-| Pipeline | Cadena de pasos de preparación y entrenamiento | 40 |
-| Transformer / Estimator | Pieza que transforma datos / pieza que aprende (`fit`) | 40 |
+| Executor | Proceso de Spark en un worker que procesa particiones | 28 |
+| RDD | *Resilient Distributed Dataset*: la colección repartida de Spark, particionada, inmutable y resiliente | 29 |
+| DataFrame | Un RDD con columnas, como una tabla | 30 |
+| Localidad de datos | Procesar cada partición donde ya está | 30 |
+| Transformación | Paso que describe un cálculo pero no lo ejecuta | 31 |
+| Acción | Pedido de un resultado que dispara la ejecución | 31 |
+| Evaluación perezosa | Anotar el plan y ejecutar recién cuando hace falta | 31 |
+| Stage | Pasos que se hacen sin mover datos entre máquinas | 32 |
+| DAG | Diagrama de pasos con flechas que no vuelven atrás (no aparece en pantalla) | 32 |
+| Lineage | La receta de cómo se calculó cada partición | 36 |
+| Checkpoint | Guardar en disco un punto intermedio para acortar la receta | 36 |
+| MLlib | La biblioteca de machine learning de Spark | 37 |
+| Feature | Una columna que describe cada dato, en forma de número | 38 |
+| Pipeline | Cadena de pasos de preparación y entrenamiento | 39 |
+| Transformer / Estimator | Pieza que transforma datos / pieza que aprende (`fit`) | 39 |
 
 ---
 
@@ -802,6 +791,6 @@ Para repasar antes de presentar. El número indica dónde aparece por primera ve
 - [ ] Completar en la portada `[Cátedra y año]`, `[Nombre y apellido]` y `[Fecha]`.
 - [ ] Pasar la presentación entera una vez en modo Presentar, para ver las animaciones.
 - [ ] Levantar el servidor y el túnel, y probar entrar desde un celular con datos móviles.
-- [ ] Tener abierta la pestaña del proyector (`/driver`) para cambiar a ella en la diapositiva 44.
+- [ ] Tener abierta la pestaña del proyector (`/driver`) para cambiar a ella en la diapositiva 43.
 - [ ] Ensayar la actividad una vez con `npm run bots -- 25`.
-- [ ] Ensayar en voz alta el recorrido (26–37) de corrido, como una sola historia: es la parte más larga y la más importante.
+- [ ] Ensayar en voz alta el recorrido (26–36) de corrido, como una sola historia: es la parte más larga y la más importante.

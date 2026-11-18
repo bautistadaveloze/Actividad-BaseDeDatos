@@ -251,9 +251,6 @@
       <section class="compus">
         <div class="compus-head">
           <h2><svg class="icon"><use href="/icons.svg#users"/></svg> <span id="compusTitle">Compus conectadas: <span class="mono">0</span></span></h2>
-          <button class="btn btn-ghost btn-sm remove-toggle" id="removeBtn" type="button" aria-pressed="false" title="Sacar compus (X)">
-            <svg class="icon" aria-hidden="true"><use href="/icons.svg#user-x"/></svg><span id="removeLabel">Sacar</span>
-          </button>
           <p class="compus-hint" id="compusHint" hidden></p>
         </div>
         <div class="compus-grid" id="compusGrid" role="list"></div>
@@ -304,6 +301,22 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
+  <div class="tile-menu" id="tileMenu" role="menu" aria-labelledby="tmTitle" hidden>
+    <p class="tm-title" id="tmTitle"></p>
+    <button class="tm-item" type="button" role="menuitem" data-act="kill">
+      <svg class="icon" aria-hidden="true"><use href="/icons.svg#power-off"/></svg>
+      <span><b>Apagar compu</b><small>Se cae: su parte la hace otra compu. La podés prender después.</small></span>
+    </button>
+    <button class="tm-item" type="button" role="menuitem" data-act="wake">
+      <svg class="icon" aria-hidden="true"><use href="/icons.svg#power"/></svg>
+      <span><b>Prender compu</b><small id="tmWakeNote">Vuelve a jugar con su parte.</small></span>
+    </button>
+    <button class="tm-item tm-bad" type="button" role="menuitem" data-act="remove">
+      <svg class="icon" aria-hidden="true"><use href="/icons.svg#user-x"/></svg>
+      <span><b>Sacar del juego</b><small>Sale de la lista. Si quiere, vuelve a entrar desde el celular.</small></span>
+    </button>
+  </div>
+
   <script src="/driver.js"></script>
 </body>
 </html>

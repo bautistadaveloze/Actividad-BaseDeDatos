@@ -84,7 +84,7 @@ Todos los celulares reciben **el mismo trabajo completo**: `6 × celulares` punt
 - "Sos el driver", reloj "0:14" (en rojo los últimos 5 s), "Punto 13 de 72" con una barra.
 - Dibujo con todos los puntos chiquitos en gris, los pintados con su color y el actual grande con un anillo que titila.
 - Tres botones (Violeta, Celeste, Rosa). Si acierta, pasa al siguiente; si no, "Casi. Fijate otra vez: hay un centro más cerca." Sin penalidad.
-- Al terminar el tiempo: "¡Tiempo!", "Pintaste 18 de 72 puntos. Te faltaron 54.", "A tu ritmo, para pintar los 72 solo tardarías unos 2 minutos." A quien pintó más: "¡Pintaste más que nadie! Y aun así, solo no llegaste." Al resto: "La que más pintó fue la compu de Ana."
+- Al terminar el tiempo: "¡Tiempo!", "Pintaste 18 de 72 puntos. Te faltaron 54.", "A tu ritmo, para pintar los 72 solo tardarías unos 2 minutos." A quien pintó más: "¡Pintaste más que nadie! Y aun así, solo no llegaste. Ahora vas a ser un worker, como todos." La etiqueta de arriba dice "Driver" solo mientras corre el reloj; cuando termina, desaparece. Al resto: "La que más pintó fue la compu de Ana."
 
 **Proyector**
 - Cuenta regresiva gigante y "Cada celular tiene 72 puntos para pintar solo."
@@ -143,7 +143,7 @@ Se hace un paso de K-Means con todos los puntos: los centros se mueven al medio 
 Empieza **otra vuelta a mano**: todas las partes vuelven a estar sin pintar y cada worker repinta la suya con los centros actuales.
 
 **Proyector**
-- Botones: "Girar la ruleta" (tecla K), "Prender todas" y "Juntar resúmenes". Tocar un worker lo hace caer directo.
+- Botones: "Girar la ruleta" (tecla K), "Prender todas" y "Juntar resúmenes". También se puede tocar un worker y elegir "Apagar compu" para que se caiga directo (6.6).
 - Ruleta: las fichas de los candidatos se iluminan de a una, cada vez más lento, y frena en la víctima. Cartel "Girando la ruleta…".
 - Al caer: "Se cayó la compu de Bruno. El cluster manager le pasó su parte a Beto." Los puntos de esa parte se marcan con un anillo y la ficha del heredero muestra "+6".
 - "Resúmenes que llegaron al driver: 17 de 18 · 18 partes y 17 compus vivas."
@@ -238,25 +238,33 @@ CONVERGED_SHIFT = 0.5, MAX_ROUNDS = 15
 ### 6.5 Caídas
 
 - Una caída mueve **todas** las partes de la víctima a **un** heredero: el worker vivo con menos partes (empate: menor id).
-- Causas: `spin` (ruleta), `kill` (tocar la ficha) y `lost` (se desconectó con trabajo pendiente y no volvió en `DEAD_AFTER_MS`). `spin` y `kill` solo valen en `fail` con una vuelta a mano abierta y sin ruleta girando.
+- Causas: `spin` (ruleta), `kill` (Apagar compu, desde el menú de la ficha) y `lost` (se desconectó con trabajo pendiente y no volvió en `DEAD_AFTER_MS`). `spin` solo vale en `fail` con una vuelta a mano abierta; `kill` vale en cualquier paso (6.6). Ninguno vale con la ruleta girando.
 - La ruleta elige la víctima entre los workers vivos con partes, prefiriendo los que todavía no mandaron. Necesita al menos 2 candidatos. Mientras gira se ignoran `spin` y `kill`.
 - Quien se cayó por `lost` y vuelve queda como worker libre, sin su parte (`me.lostTo` dice quién la hizo).
 - `revive` prende a los que están conectados y devuelve cada parte a su `home` si su dueño original es un worker vivo.
 - `reset` vuelve a `lobby`, borra datos y medallas, y descarta a los desconectados.
 
-### 6.6 Sacar una compu
+### 6.6 Apagar, prender y sacar una compu
 
-Para alguien que se fue, quedó inactivo o no quiere jugar. Se puede en cualquier paso.
+Para alguien que se fue, quedó inactivo o no quiere jugar, o para mostrar una caída. Se puede en **cualquier paso**.
 
-- **Proyector:** el botón "Sacar" (tecla X) arriba de la grilla prende el modo sacar: la grilla se marca en rojo al pasar el mouse y tocar una compu la saca. El modo queda prendido para sacar varias; se apaga con el mismo botón ("Listo") o con Esc. Aviso: "Tocá una compu para sacarla. Si quiere volver, entra de nuevo desde el celular."
-- **Servidor (`remove { id }`):** si la compu tenía partes, pasan todas a un heredero, igual que en una caída (el worker vivo con menos partes; empate: menor id). No es una caída: no cambia `lastFail` ni da medallas a quien sale. Si no queda nadie para heredar, el driver completa esas partes al juntar. Si la compu era candidata de la ruleta, la ruleta se cancela.
+- **Proyector:** tocar cualquier ficha de la grilla abre un menú con "Compu 05 · Eze" y estas opciones: **Apagar compu** ("Se cae: su parte la hace otra compu. La podés prender después.") o **Prender compu** si ya está apagada ("Vuelve a jugar con su parte."; deshabilitada si está desconectada), y **Sacar del juego** ("Sale de la lista. Si quiere, vuelve a entrar desde el celular."). Se cierra al elegir, al tocar afuera o con Esc. Con la ruleta girando, apagar y prender están deshabilitados. Arriba de la grilla, siempre: "Tocá una compu para apagarla, prenderla o sacarla del juego."
+
+**Apagar (`kill { id }`)**
+- Con partes y alguien para heredarlas: es una caída (6.5) con causa `kill`: pasan al heredero, se arma `lastFail` y el celular muestra "¡Se cayó tu compu!".
+- Sin partes (por ejemplo, antes del cluster manager) o sin nadie para heredar: queda apagada sin `lastFail`. El celular muestra "Apagaron tu compu" · "Por ahora no jugás. Quien presenta la puede volver a prender: dejá esta pantalla abierta." Una compu apagada no pinta en el paso solo, el cluster manager no la anota y no recibe tareas.
+
+**Prender (`wake { id }`)**: solo si está conectada. Recupera sus partes (las que tienen `home` en ella) o, si no estaba anotada, el cluster manager la anota y, si ya hay datos, recibe su parte. Si era la víctima de `lastFail`, se borra.
+
+**Sacar (`remove { id }`)**
+- **Servidor:** si la compu tenía partes, pasan todas a un heredero, igual que en una caída (el worker vivo con menos partes; empate: menor id). No es una caída: no cambia `lastFail` ni da medallas a quien sale. Si no queda nadie para heredar, el driver completa esas partes al juntar. Si la compu era candidata de la ruleta, la ruleta se cancela.
 - La compu sale de todas las listas y cuentas, pero su nombre sigue en los resúmenes viejos. Su token queda bloqueado: un celular inactivo no vuelve solo al reconectarse.
 - **Celular:** recibe `kicked` y muestra "Saliste de la actividad" · "Quien presenta sacó tu compu del clúster. Si querés volver a jugar, entrá de nuevo." con el botón "Volver a entrar", que lleva al formulario con el nombre ya puesto. Al entrar usa un token nuevo: es una compu nueva y, si ya hay datos, recibe su parte.
 - Quien hereda ve la parte con el cartel "Parte de Bruno: salió de la actividad".
 
 ### 6.7 Prueba
 
-`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: que no se salte el paso de cómo se juega, driver solo, que ningún celular quede como driver ni pueda pedir compus, juntar o arrancar vueltas, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset, un ensayo con un solo celular y sacar compus (en lobby, con una parte a medio pintar y desconectada, con el token viejo bloqueado y la vuelta con uno nuevo).
+`npm test` verifica el generador de puntos, que K-Means converge (200 semillas con 3, 10 y 30 celulares, 8 vueltas o menos) y toda la clase de punta a punta: que no se salte el paso de cómo se juega, driver solo, que ningún celular quede como driver ni pueda pedir compus, juntar o arrancar vueltas, registro, partes, resúmenes, desconexión real con reasignación, join, vueltas automáticas, ruleta, revive, llegada tardía, medallas, reset, un ensayo con un solo celular, apagar y prender en cualquier paso (en lobby sin partes, en combine con partes que pasan a otra y vuelven) y sacar compus (en lobby, con una parte a medio pintar y desconectada, con el token viejo bloqueado y la vuelta con uno nuevo).
 
 ## 7. Contrato de sockets
 
@@ -266,10 +274,11 @@ El rol va en `auth`. Proyector: `{ role: 'projector', key }` (si la clave está 
 
 ```js
 {
+  build,                                     // huella de los archivos de las pantallas (7.4)
   phase,
   publicUrl,
   soloMs,                                    // duración del driver solo (SOLO_MS)
-  phones: [{ id, name, status, registered, parts, inherited, solo }],
+  phones: [{ id, name, status, connected, registered, parts, inherited, solo }],
   // status: waiting | painting | done | joined | out | sent | idle | working | off | offline
   points: [{ x, y, label, moved }],          // label -1 = sin pintar; moved = la tiene otra compu
   centers, trail, round, shifts,
@@ -291,6 +300,7 @@ El rol va en `auth`. Proyector: `{ role: 'projector', key }` (si la clave está 
 
 ```js
 {
+  build,                         // la misma huella (7.4)
   phase,
   soloMs,
   me: { id, name, role: 'worker' | 'none', registered, off, offCause, lostTo, working, rounds, soloDone, top, medals },
@@ -314,7 +324,8 @@ Además: `task { round, centers }` en las vueltas automáticas y `kicked` cuando
 | Proyector | `phase` | `{ phase }` | Avanza un paso (6.3) |
 | Proyector | `join` | — | Junta (`work`: pasa a `combine`; `fail`: en el lugar) |
 | Proyector | `round` / `run` | — / `{ on }` | Vuelta automática / seguir solo (`combine`) |
-| Proyector | `spin` / `kill` / `revive` | — / `{ id }` / — | Caídas (6.5) |
+| Proyector | `spin` / `revive` | — / — | Ruleta y prender todas (6.5) |
+| Proyector | `kill` / `wake` | `{ id }` | Apaga o prende una compu, en cualquier paso (6.6) |
 | Proyector | `remove` | `{ id }` | Saca una compu (6.6) |
 | Proyector | `reset` | — | Vuelve a `lobby` |
 | Celular | `solo:progress` | `{ done }` | Cuántos pintó solo |
@@ -324,6 +335,10 @@ Además: `task { round, centers }` en las vueltas automáticas y `kicked` cuando
 Pedir compus es `phase { phase: 'work' }`. Las acciones del driver (pedir compus, juntar, vueltas) son todas del proyector: ningún celular las puede hacer.
 
 Medallas (en este orden; si no tiene ninguna, `cluster`): `top` (Pintaste más que nadie solo), `heir` (Hiciste el trabajo de otra compu), `fallen` (Se cayó tu compu y no se perdió nada), `survivor` (Sobreviviste a la ruleta), `worker` (Fuiste un worker del clúster).
+
+### 7.4 Recarga automática
+
+Al arrancar, el servidor calcula `build`: una huella de los archivos de `presentacion-web/public` y de `lib/kmeans.js`, y la manda en cada `state`. Cada pantalla guarda la del primer `state` que recibe; si llega otra distinta, se recarga sola. Así un celular o un proyector que quedaron abiertos mientras se reiniciaba el servidor con código nuevo nunca siguen con el código viejo. Al recargar no se pierde nada: el celular guarda su token y el proyector, la clave.
 
 Para ensayar, `/?nombre=Ana` entra directo y cada pestaña abierta así es una compu distinta.
 
@@ -344,8 +359,7 @@ Para ensayar, `/?nombre=Ana` entra directo y cada pestaña abierta así es una c
 | Espacio o R | Otra vuelta (Juntar) |
 | S | Repetir solo / pausar (Juntar) |
 | K | Girar la ruleta (Se cae una) |
-| X | Prender o apagar el modo sacar compus |
 | Q | Mostrar u ocultar el QR grande |
 | T | Alto contraste |
 | F | Pantalla completa |
-| Esc | Cierra el QR o el diálogo y apaga el modo sacar |
+| Esc | Cierra el QR, el diálogo o el menú de una compu |

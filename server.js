@@ -41,6 +41,18 @@ const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 4000, pingTimeout: 7000 });
 
 const publicDir = path.join(__dirname, 'presentacion-web', 'public');
+
+// A fingerprint of the files the screens run. Every snapshot carries it and a
+// page that loaded other files reloads itself, so a phone or projector left
+// open across a restart never keeps running old code.
+const BUILD = (() => {
+  const hash = crypto.createHash('sha1');
+  const files = fs.readdirSync(publicDir).sort().map((f) => path.join(publicDir, f));
+  for (const file of [...files, path.join(__dirname, 'lib', 'kmeans.js')]) {
+    if (fs.statSync(file).isFile()) hash.update(fs.readFileSync(file));
+  }
+  return hash.digest('hex').slice(0, 12);
+})();
 app.get('/', (_req, res) => res.sendFile(path.join(publicDir, 'worker.html')));
 app.get('/driver', (_req, res) => res.sendFile(path.join(publicDir, 'driver.html')));
 app.get('/fichas', (_req, res) => res.sendFile(path.join(publicDir, 'fichas.html')));
@@ -226,7 +238,7 @@ function msPerPoint() {
 
 function soloProgress(p, payload) {
   const solo = S.solo;
-  if (S.phase !== 'solo' || !solo || !p.connected) return;
+  if (S.phase !== 'solo' || !solo || !p.connected || p.off) return;
   const now = Date.now();
   if (solo.over && now > solo.endedAt + SOLO_GRACE_MS) return;
   const done = payload.done;
@@ -578,10 +590,44 @@ function armDeadTimer(p) {
 
 const canFail = () => S.phase === 'fail' && !!S.manual && !S.spin;
 
+// The projector turns a phone off at any moment. If it has parts they go to
+// another worker, like a fall from the roulette. If not (or nobody can take
+// them), it just stops playing until it is turned on again.
 function kill(id) {
-  if (!canFail()) return;
-  const victim = S.byId.get(id);
-  if (victim && isLive(victim)) knockOut(victim, 'kill');
+  if (S.spin) return;
+  const p = S.byId.get(id);
+  if (!p || p.removed || p.off) return;
+  if (knockOut(p, 'kill')) return;
+  p.off = true;
+  p.offCause = 'kill';
+  p.lostTo = null;
+  clearTimeout(p.deadTimer);
+  p.deadTimer = null;
+  clearPending(p);
+  broadcast();
+}
+
+// Turns one phone back on: it gets its own parts back, or signs up as a
+// worker if it was off when the cluster manager came.
+function wake(id) {
+  if (S.spin) return;
+  const p = S.byId.get(id);
+  if (!p || p.removed || !p.off || !p.connected) return;
+  p.off = false;
+  p.offCause = null;
+  p.lostTo = null;
+  if (!p.registered) enlist(p);
+  else {
+    const now = Date.now();
+    for (const part of S.parts) {
+      if (part.home === p.id && part.owner !== p.id) {
+        part.owner = p.id;
+        if (S.manual && !part.sent) part.startAt = now;
+      }
+    }
+  }
+  if (S.lastFail && S.lastFail.victimId === p.id) S.lastFail = null;
+  broadcast();
 }
 
 function spinStart() {
@@ -756,6 +802,7 @@ function projectorSnapshot() {
     if (part.owner !== part.home) inherited.set(part.owner, (inherited.get(part.owner) || 0) + 1);
   }
   return {
+    build: BUILD,
     phase: S.phase,
     publicUrl: PUBLIC_URL,
     soloMs: SOLO_MS,
@@ -763,6 +810,7 @@ function projectorSnapshot() {
       id: p.id,
       name: p.name,
       status: statusOf(p),
+      connected: p.connected,
       registered: p.registered,
       parts: partCount.get(p.id) || 0,
       inherited: inherited.get(p.id) || 0,
@@ -809,6 +857,7 @@ function phoneSnapshot(p, byPart) {
   const mine = partsOf(p).sort((a, b) => ((a.home === p.id ? 0 : 1) - (b.home === p.id ? 0 : 1)) || (a.id - b.id));
   const solo = S.phase === 'solo' && S.solo ? soloInfo() : null;
   return {
+    build: BUILD,
     phase: S.phase,
     soloMs: SOLO_MS,
     me: {
@@ -900,6 +949,7 @@ function attachProjector(socket, auth) {
   on('spin', () => spinStart());
   on('revive', () => revive());
   on('remove', ({ id }) => { if (Number.isInteger(id)) removePhone(id); });
+  on('wake', ({ id }) => { if (Number.isInteger(id)) wake(id); });
   on('reset', () => reset());
 }
 

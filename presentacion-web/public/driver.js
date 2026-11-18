@@ -113,6 +113,7 @@
   const embedded = document.documentElement.dataset.embed === 'true';
   let socket = null;
   let state = null;
+  let build = null; // fingerprint of the files this page loaded (from the first state)
 
   // ------------------------------------------------------------ auth
 
@@ -145,7 +146,13 @@
     socket.on('auth:error', (msg) => { socket.close(); showAuth(msg); });
     socket.on('connect', () => { $('#conn').hidden = true; });
     socket.on('disconnect', () => { $('#conn').hidden = false; });
-    socket.on('state', (s) => { state = s; render(); });
+    socket.on('state', (s) => {
+      // The server runs other files than this page loaded: reload to get them.
+      if (build === null) build = s.build;
+      else if (s.build !== build) { location.reload(); return; }
+      state = s;
+      render();
+    });
   }
 
   const send = (event, payload) => socket && socket.emit(event, payload);
@@ -177,7 +184,6 @@
   const canRound = (s) => s.phase === 'combine' && !s.busy && !s.converged;
   const failCandidates = (s) => liveWorkers(s).filter((p) => p.parts > 0);
   const canSpin = (s) => s.phase === 'fail' && !!s.manual && !s.spin && failCandidates(s).length > 1;
-  const canKill = (s) => s.phase === 'fail' && !!s.manual && !s.spin;
 
   // ------------------------------------------------------------ chrome
 
@@ -223,7 +229,7 @@
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.target instanceof HTMLInputElement) return;
-    if (e.key === 'Escape') { toggleQr(false); askReset(false); if (removeMode) setRemoveMode(false); return; }
+    if (e.key === 'Escape') { toggleQr(false); askReset(false); closeMenu(); return; }
     if (!confirmBox.hidden) return; // the dialog owns the keyboard while open
     const k = e.key.toLowerCase();
     if (e.key === 'ArrowRight') goNext();
@@ -231,7 +237,6 @@
     else if (k === 's') toggleRun();
     else if (k === 'j') doJoin();
     else if (k === 'k') doSpin();
-    else if (k === 'x') setRemoveMode(!removeMode);
     else if (k === 'q') toggleQr();
     else if (k === 't') toggleTheme();
     else if (k === 'f') toggleFullscreen();
@@ -385,24 +390,58 @@
   }
   const applyAllFx = () => tiles.forEach(applyTileFx);
 
-  // "Sacar" mode: a tap takes the phone out of the class (it left, went idle
-  // or does not want to play). It stays on until turned off, to take out several.
-  let removeMode = false;
-  const removeBtn = $('#removeBtn');
-  function setRemoveMode(on) {
-    removeMode = on;
-    removeBtn.setAttribute('aria-pressed', String(on));
-    $('#removeLabel').textContent = on ? 'Listo' : 'Sacar';
-    if (state) renderCompus(state);
-  }
-  removeBtn.addEventListener('click', () => setRemoveMode(!removeMode));
+  // A tap on any tile, at any step, opens a menu to turn that phone off or
+  // on, or to take it out of the class (it left, went idle or does not want
+  // to play).
+  const menu = $('#tileMenu');
+  let menuFor = null; // id of the phone the menu is open for
 
-  // What a tap on a tile does in this state, or null.
-  function tileAction(s, p) {
-    if (removeMode) return 'remove';
-    if (canKill(s) && p.registered && p.parts > 0 && ['painting', 'sent', 'idle'].includes(p.status)) return 'kill';
-    return null;
+  function openMenu(id, anchor) {
+    menuFor = id;
+    renderMenu();
+    if (menuFor === null) return;
+    menu.hidden = false;
+    const r = anchor.getBoundingClientRect();
+    const top = r.bottom + 6 + menu.offsetHeight > window.innerHeight - 8 ? r.top - menu.offsetHeight - 6 : r.bottom + 6;
+    menu.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+    const first = menu.querySelector('.tm-item:not([hidden]):not(:disabled)');
+    if (first) first.focus();
+    applyMenuMark();
   }
+
+  function closeMenu() {
+    menu.hidden = true;
+    menuFor = null;
+    applyMenuMark();
+  }
+
+  const applyMenuMark = () => tiles.forEach((t) => t.el.classList.toggle('is-open', t.id === menuFor));
+
+  function renderMenu() {
+    if (menuFor === null) return;
+    const p = state && state.phones.find((q) => q.id === menuFor);
+    if (!p) { closeMenu(); return; }
+    $('#tmTitle').textContent = `Compu ${pad(p.id)} · ${p.name}`;
+    const off = p.status === 'off';
+    const kill = menu.querySelector('[data-act="kill"]');
+    const wake = menu.querySelector('[data-act="wake"]');
+    kill.hidden = off;
+    kill.disabled = !!state.spin;
+    wake.hidden = !off;
+    wake.disabled = !!state.spin || !p.connected;
+    $('#tmWakeNote').textContent = p.connected ? 'Vuelve a jugar con su parte.' : 'Está desconectada: se puede prender cuando vuelva.';
+  }
+
+  menu.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn || btn.disabled || menuFor === null) return;
+    send(btn.dataset.act, { id: menuFor });
+    closeMenu();
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!menu.hidden && !menu.contains(e.target) && !e.target.closest('.tile')) closeMenu();
+  });
 
   function tileExtra(s, p) {
     if (s.phase === 'solo') return p.solo > 0 ? String(p.solo) : '';
@@ -420,9 +459,8 @@
     const title = `${titles[s.phase] || 'Workers'}: <span class="mono">${count}</span>`;
     if (compusTitle.innerHTML !== title) compusTitle.innerHTML = title;
     const hint = $('#compusHint');
-    const hintText = removeMode ? 'Tocá una compu para sacarla. Si quiere volver, entra de nuevo desde el celular.'
-      : canKill(s) ? 'Tocá un worker para que se caiga.' : '';
-    hint.textContent = hintText;
+    const hintText = s.phones.length ? 'Tocá una compu para apagarla, prenderla o sacarla del juego.' : '';
+    if (hint.textContent !== hintText) hint.textContent = hintText;
     hint.hidden = !hintText;
 
     const n = s.phones.length;
@@ -439,33 +477,26 @@
         el.querySelector('.t-num').textContent = pad(p.id);
         el.addEventListener('click', () => {
           if (!state) return;
-          const cur = state.phones.find((q) => q.id === p.id);
-          const action = cur && tileAction(state, cur);
-          if (action === 'remove') send('remove', { id: p.id });
-          else if (action === 'kill') send('kill', { id: p.id });
+          if (menuFor === p.id) closeMenu();
+          else openMenu(p.id, el);
         });
         t = { el, sig: '', id: p.id };
         tiles.set(p.id, t);
       }
-      const action = tileAction(s, p);
       const st = s.phase === 'manager' && p.status === 'waiting' ? NOT_YET : (STATUS[p.status] || STATUS.idle);
       const extra = tileExtra(s, p);
-      const sig = `${p.name}|${p.status}|${s.phase}|${extra}|${action}`;
+      const sig = `${p.name}|${p.status}|${s.phase}|${extra}`;
       if (t.sig !== sig) {
         t.sig = sig;
         const el = t.el;
-        el.className = `tile tone-${st.tone}`;
+        el.className = `tile tone-${st.tone} is-tappable${menuFor === p.id ? ' is-open' : ''}`;
         el.dataset.status = p.status;
-        el.disabled = !action;
-        el.classList.toggle('is-tappable', !!action);
-        el.classList.toggle('is-kill', action === 'kill');
-        el.classList.toggle('is-remove', action === 'remove');
+        el.setAttribute('aria-haspopup', 'menu');
         el.querySelector('.t-ico').innerHTML = icon(st.icon);
         el.querySelector('.t-name').textContent = p.name;
         el.querySelector('.t-inh').textContent = extra;
         el.title = `Compu ${pad(p.id)} · ${p.name} · ${st.label}`;
-        const tap = action === 'remove' ? '. Tocar para sacarla' : action === 'kill' ? '. Tocar para que se caiga' : '';
-        el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}${tap}`);
+        el.setAttribute('aria-label', `Compu ${pad(p.id)}, ${p.name}, ${st.label}${p.inherited ? `, heredó ${p.inherited} puntos` : ''}. Tocar para apagarla, prenderla o sacarla`);
       }
       if (grid.children[idx] !== t.el) grid.insertBefore(t.el, grid.children[idx] || null);
       applyTileFx(t);
@@ -1001,6 +1032,7 @@
     renderStepper(s);
     renderRoles(s);
     renderCompus(s);
+    renderMenu();
     renderSpin(s);
     renderCard(s);
     renderHowto(s);

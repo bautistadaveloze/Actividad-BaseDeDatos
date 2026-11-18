@@ -232,8 +232,45 @@ body[data-phase="combine"] .plot-box { height: min(100%, 31rem); align-self: sta
 .compus-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem 0.5rem; }
 .compus-head h2 { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 0.5rem; font-size: 1.2rem; font-weight: 600; letter-spacing: 0; }
 .compus-head .compus-hint { flex-basis: 100%; }
-.remove-toggle { gap: 0.35rem; }
-.remove-toggle[aria-pressed="true"] { color: var(--bad); border-color: var(--bad); background: var(--bad-soft); }
+
+/* menu on a tile: turn a phone off or on, or take it out of the class */
+.tile-menu {
+  position: fixed;
+  z-index: 50;
+  width: 21rem;
+  max-width: calc(100vw - 16px);
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.5rem;
+  border: var(--stroke) solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+}
+.tile-menu[hidden] { display: none; }
+.tm-title { padding: 0.25rem 0.5rem 0.4rem; font-size: 1rem; font-weight: 700; color: var(--fg-2); }
+.tm-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem;
+  align-items: start;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tm-item[hidden] { display: none; }
+.tm-item:hover, .tm-item:focus-visible { background: var(--bg-hover); outline: none; }
+.tm-item:disabled { opacity: 0.45; cursor: default; }
+.tm-item .icon { width: 1.25rem; height: 1.25rem; margin-top: 0.1rem; }
+.tm-item b { display: block; font-size: 1.05rem; }
+.tm-item small { display: block; font-size: 0.875rem; line-height: 1.3; color: var(--fg-2); }
+.tm-bad .icon, .tm-bad b { color: var(--bad); }
 .compus-grid { --cols: 4; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 0.35rem; align-content: start; }
 .compus-grid[data-size="m"] { --cols: 3; --th: 2.7rem; }
 .compus-grid[data-size="s"] { --cols: 4; --th: 2.3rem; }
@@ -539,8 +576,7 @@ body[data-phase="combine"] .legend { display: none; }
 .role-v { font-size: 1.15rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .compus-hint { font-size: 1rem; color: var(--fg-2); }
 .tile.is-tappable:hover { border-color: var(--accent); background: var(--accent-soft); }
-.tile.is-kill:hover { border-color: var(--bad); background: var(--bad-soft); }
-.tile.is-remove:hover { border-color: var(--bad); background: var(--bad-soft); text-decoration: line-through; }
+.tile.is-open { border-color: var(--accent); background: var(--accent-soft); }
 
 @keyframes tick { 50% { opacity: 0.55; } }
 @keyframes node-in { from { opacity: 0; transform: translateY(1rem) scale(0.94); } }

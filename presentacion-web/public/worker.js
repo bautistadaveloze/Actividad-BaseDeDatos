@@ -37,6 +37,7 @@
   const screen = $('#screen');
   let socket = null;
   let state = null;
+  let build = null; // fingerprint of the files this page loaded (from the first state)
   let viewKey = null;
   let hintTimer = null;
   let lastPainted = -1; // index that just got painted, for the pop animation
@@ -77,7 +78,13 @@
     socket.on('connect', () => setConn(true));
     socket.on('disconnect', () => setConn(false));
     socket.on('connect_error', () => setConn(false));
-    socket.on('state', (s) => { state = s; onState(); });
+    socket.on('state', (s) => {
+      // The server runs other files than this page loaded: reload to get them.
+      if (build === null) build = s.build;
+      else if (s.build !== build) { location.reload(); return; }
+      state = s;
+      onState();
+    });
     socket.on('task', onTask);
     socket.on('join:error', (msg) => {
       banner('bad', 'circle-alert', esc(msg), 8000);
@@ -216,7 +223,9 @@
     const { me } = state;
     $('#barTitle').textContent = `Compu ${pad(me.id)} · ${me.name}`;
     const role = $('#barRole');
-    const roleText = me.role === 'worker' ? 'Worker' : state.phase === 'solo' ? 'Driver' : '';
+    // "Driver" only while painting alone: once time is up nobody is the driver anymore.
+    const soloOn = state.phase === 'solo' && state.solo && !state.solo.over;
+    const roleText = me.role === 'worker' ? 'Worker' : soloOn ? 'Driver' : '';
     role.textContent = roleText;
     role.hidden = !roleText;
     role.dataset.role = me.role;
@@ -456,7 +465,7 @@
       const dur = (state.solo && state.solo.durationMs) || 20000;
       const myEstimate = done >= 3 ? Math.round((dur / done) * total) : null;
       const top = state.me.top
-        ? `<div class="podium">${icon('trophy')}<span>¡Pintaste más que nadie! Y aun así, solo no llegaste.</span></div>`
+        ? `<div class="podium">${icon('trophy')}<span>¡Pintaste más que nadie! Y aun así, solo no llegaste. Ahora vas a ser un worker, como todos.</span></div>`
         : state.solo && state.solo.over && state.solo.top
           ? `<p class="note">${icon('trophy')}<span>La que más pintó fue la compu de <b>${esc(state.solo.top)}</b>.</span></p>` : '';
       return `
@@ -576,7 +585,16 @@
 
     off() {
       const f = state.lastFail;
-      const heir = state.me.lostTo || (f && f.heir) || 'otra compu';
+      const heir = state.me.lostTo || (f && f.me === 'victim' && f.heir);
+      // Turned off with no part to hand over: it just waits to be turned on.
+      if (!heir) {
+        return `
+        <div class="off">
+          <div class="off-icon">${icon('power-off')}</div>
+          <h1>Apagaron tu compu</h1>
+          <p class="lead">Por ahora no jugás. Quien presenta la puede volver a prender: dejá esta pantalla abierta.</p>
+        </div>`;
+      }
       return `
         <div class="off">
           <div class="off-icon">${icon('power-off')}</div>

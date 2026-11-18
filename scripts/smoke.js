@@ -116,8 +116,10 @@ function checkProjectorShape(s, where) {
   ok(typeof s.publicUrl === 'string', 'publicUrl');
   ok(isNum(s.soloMs), 'soloMs');
   ok(s.driver === undefined, 'no hay driver de celular: el driver es el proyector');
+  ok(typeof s.build === 'string' && s.build.length > 0, 'build');
   ok(Array.isArray(s.phones) && s.phones.every((p) => isNum(p.id) && typeof p.name === 'string' && STATUSES.includes(p.status)
-    && typeof p.registered === 'boolean' && isNum(p.parts) && isNum(p.inherited) && isNum(p.solo)), 'phones[{id,name,status,registered,parts,inherited,solo}]');
+    && typeof p.connected === 'boolean' && typeof p.registered === 'boolean' && isNum(p.parts) && isNum(p.inherited) && isNum(p.solo)),
+  'phones[{id,name,status,connected,registered,parts,inherited,solo}]');
   ok(Array.isArray(s.points) && s.points.every((p) => isPoint(p) && typeof p.moved === 'boolean'
     && Number.isInteger(p.label) && p.label >= -1 && p.label < 3), 'points[{x,y,label,moved}]');
   ok(Array.isArray(s.centers) && s.centers.length === 3 && s.centers.every(isPoint), 'centers');
@@ -141,6 +143,7 @@ function checkProjectorShape(s, where) {
 function checkPhoneShape(s, where) {
   const ok = (cond, what) => check(cond, `[${where}] state del celular: ${what}`);
   ok(PHASES.includes(s.phase), 'phase');
+  ok(typeof s.build === 'string' && s.build.length > 0, 'build');
   ok(isNum(s.soloMs), 'soloMs');
   const m = s.me;
   ok(m && isNum(m.id) && typeof m.name === 'string' && ['worker', 'none'].includes(m.role)
@@ -522,15 +525,26 @@ async function takeOut(port) {
   check(D2.errors.some((e) => e[0] === 'kicked') && !D2.socket.connected && proj.state.phones.length === 3,
     'con el token viejo no puede volver sola');
   B.socket.emit('remove', { id: idOf(A) });
+  B.socket.emit('kill', { id: idOf(A) });
   await sleep(150);
-  check(proj.state.phones.length === 3, 'un celular no puede sacar a nadie');
+  check(proj.state.phones.length === 3 && !A.state.me.off, 'un celular no puede sacar ni apagar a nadie');
 
-  step('sacar en work: su parte pasa a otro worker');
+  step('apagar y prender en cualquier paso');
+  proj.socket.emit('kill', { id: idOf(C) });
+  await waitFor(C, (s) => s.me.off, 'en lobby se puede apagar una compu');
+  check(proj.state.phones.find((p) => p.name === 'Caro').status === 'off' && proj.state.lastFail === null,
+    'figura apagada, sin cartel de caída');
   proj.socket.emit('phase', { phase: 'howto' });
   proj.socket.emit('phase', { phase: 'solo' });
   await waitFor(A, (s) => s.phase === 'solo', 'solo');
+  C.socket.emit('solo:progress', { done: 5 });
+  await sleep(150);
+  check(!proj.state.solo.leaders.some((l) => l.name === 'Caro'), 'una compu apagada no pinta');
   proj.socket.emit('phase', { phase: 'manager' });
-  await waitAll([A, B, C], (s) => s.me.registered, 'workers anotados');
+  await waitAll([A, B], (s) => s.me.registered, 'workers anotados');
+  check(!C.state.me.registered, 'la apagada no queda anotada');
+  proj.socket.emit('wake', { id: idOf(C) });
+  await waitFor(C, (s) => !s.me.off && s.me.registered, 'al prenderla queda anotada como worker');
   proj.socket.emit('phase', { phase: 'work' });
   await waitAll([A, B, C], (s) => s.phase === 'work' && s.parts.length === 1, 'cada uno con su parte');
   C.socket.emit('part:submit', { part: C.state.parts[0].id });
@@ -546,6 +560,16 @@ async function takeOut(port) {
   proj.socket.emit('join');
   await waitFor(proj, (s) => s.phase === 'combine' && s.join.parts === 3 && s.join.filled === 0, 'se junta sin perder nada');
   check(proj.state.inbox.some((e) => e.from === 'Bruno' && e.by === 'Ana'), 'el resumen de la parte de Bruno lo hizo Ana');
+
+  step('apagar con partes en combine: pasan a otra y vuelven al prender');
+  proj.socket.emit('kill', { id: idOf(A) });
+  await waitFor(A, (s) => s.me.off && s.me.lostTo === 'Caro', 'Ana se apaga y su trabajo lo hace Caro');
+  await waitFor(C, (s) => s.parts.length === 3, 'Caro tiene sus partes y las dos de Ana');
+  check(proj.state.lastFail && proj.state.lastFail.cause === 'kill' && proj.state.lastFail.victim === 'Ana', 'cuenta como caída');
+  proj.socket.emit('wake', { id: idOf(A) });
+  await waitFor(A, (s) => !s.me.off && s.parts.length === 1 && s.parts[0].from === null, 'al prenderla vuelve su parte');
+  await waitFor(C, (s) => s.parts.length === 2, 'Caro se queda con la parte de Bruno');
+  check(proj.state.lastFail === null, 'se borra el cartel de la caída');
 
   step('sacar a una compu desconectada y volver a entrar con otro token');
   C.socket.close();

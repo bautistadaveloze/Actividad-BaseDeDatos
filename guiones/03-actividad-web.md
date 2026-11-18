@@ -86,7 +86,7 @@ Al tocar **Arrancar**:
 
 **Celular:** empieza otra vuelta a mano: cada worker vuelve a pintar su parte.
 
-**Vos:** mientras pintan, tocá **Girar la ruleta** (o la tecla K). Las compus se iluminan de a una hasta frenar en una víctima. También podés tocar un worker en la grilla para que se caiga directo.
+**Vos:** mientras pintan, tocá **Girar la ruleta** (o la tecla K). Las compus se iluminan de a una hasta frenar en una víctima. También podés tocar un worker en la grilla y elegir **Apagar compu** para que se caiga directo.
 
 **Qué pasa:**
 - La víctima ve "¡Se cayó tu compu!" (es de mentira).
@@ -136,13 +136,15 @@ Debajo: "21 partes · 126 puntos · 4 vueltas · 1 compu caída y ningún dato p
 | Q | Mostrar u ocultar el QR grande |
 | T | Alto contraste |
 | F | Pantalla completa |
-| X | Prender o apagar el modo sacar compus |
-| Esc | Cierra el QR y apaga el modo sacar |
+| Esc | Cierra el QR o el menú de una compu |
 
 ## Si algo falla
 
 - **Alguien no se conecta:** puede mirar el proyector. La actividad sigue sin él.
 - **Alguien entra tarde:** el cluster manager lo anota como worker solo y recibe su parte en el momento.
-- **Alguien se fue, quedó inactivo o no quiere jugar:** tocá **Sacar** arriba de la grilla del proyector (o la tecla X) y después su compu. Si tenía una parte, pasa a otro worker y no se pierde nada; no cuenta como caída. Su celular muestra "Saliste de la actividad" y, si quiere volver, toca **Volver a entrar**. Tocá **Listo** (o Esc) para dejar de sacar.
+- **Alguien se fue, quedó inactivo o no quiere jugar:** en cualquier paso, tocá su compu en la grilla del proyector y elegí:
+  - **Apagar compu:** deja de jugar y su parte la hace otra compu (si tenía). Su celular dice "Apagaron tu compu". La podés **Prender** después desde el mismo menú.
+  - **Sacar del juego:** sale de la lista. Si tenía una parte, pasa a otro worker y no se pierde nada; no cuenta como caída. Su celular muestra "Saliste de la actividad" y, si quiere volver, toca **Volver a entrar**.
+- **Un celular muestra algo viejo:** las pantallas se recargan solas cuando el servidor arranca con código nuevo. Si una página quedó abierta desde antes de este cambio, recargala una vez a mano.
 - **Alguien no termina de pintar:** se puede juntar igual desde el proyector; el driver completa lo que falta.
 - **Sin wifi:** usá el plan alternativo del informe, con puntos y centros impresos.

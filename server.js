@@ -40,6 +40,13 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { pingInterval: 4000, pingTimeout: 7000 });
 
+// The screens must never run stale files (a phone or projector left open
+// across a restart): nothing but the fonts may be cached by the browser.
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/fonts/')) res.set('Cache-Control', 'no-store');
+  next();
+});
+
 const publicDir = path.join(__dirname, 'presentacion-web', 'public');
 
 // A fingerprint of the files the screens run. Every snapshot carries it and a
